@@ -1,0 +1,7 @@
+numpy
+sounddevice
+mlx-whisper
+webrtcvad
+python-dotenv
+google-genai
+streamlit
