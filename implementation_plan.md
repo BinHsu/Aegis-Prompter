@@ -30,12 +30,12 @@
 ## 📍 Phase 4: Streamlit 無干擾提詞介面
 **目標：** 打造極簡 Dashboard。
 1. **開發 `src/app.py`:** 
-   - 啟動本地端 Dashboard，黑底白字自動顯示：面試官提問，以及三點 Bullet points。
+   - 啟動本地端 Dashboard，黑底白字自動顯示：與會者提問，以及三點 Bullet points。
    - 新增：將 Polling 冷卻時間下調至 `3 秒`。
 
 ## 📍 Phase 5: [新增] 實戰戰術防禦矩陣 (Tactical Defense Matrix)
 **目標：** 在不重啟系統的前提下，讓使用者隨時能「熱更新」AI 的標準答案與個人戰績。
 1. **建立 `context/profile.md`:** 完整注入使用者的 Edge-to-Cloud, IaC, ProxySQL 等真實戰績。
-2. **建立 `context/qa.md`:** 部署 11 道「一招斃命」的面試陷阱題標準講稿，並透過 System Override 強制 AI 100% 照抄宣讀。
+2. **建立 `context/qa.md`:** 部署 11 道「一招斃命」的會議陷阱題標準講稿，並透過 System Override 強制 AI 100% 照抄宣讀。
 3. **建立 `context/fillers.md`:** 在 UI 右側提供靜態的破冰/爭取時間金句，填補大腦處理與 API 延遲的 3 秒鐘真空期。
 4. **引擎升級:** 全面綁定 Pay-As-You-Go 信用卡，解除 `gemini-2.5-pro` 限制，全速改採 `gemini-2.5-flash` 保證最低延遲。

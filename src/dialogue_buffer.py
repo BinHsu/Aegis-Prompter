@@ -8,7 +8,7 @@ class DialogueBuffer:
         """
         self.buffer = []
         self.max_history = max_history
-        # Thread Lock 防止面試中雙方搶話造成的資料覆蓋 Race Condition
+        # Thread Lock 防止高強度對話中雙方搶話造成的資料覆蓋 Race Condition
         self.lock = threading.Lock()
         self.current_advice = "等待對話..."
         self.is_thinking = False
@@ -62,6 +62,6 @@ class DialogueBuffer:
             return self.buffer[-1]['role']
 
     def clear(self):
-        """清空所有對話記錄，通常在面試結束時使用"""
+        """清空所有對話記錄，通常在會議結束時使用"""
         with self.lock:
             self.buffer.clear()

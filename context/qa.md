@@ -1,11 +1,11 @@
-# 🇩🇪 德國職涯攻堅：面試防禦題庫與標準答案 (Q&A Bank v4)
+# 🛡️ 技術對話與職涯戰略矩陣 (Technical Strategy Matrix v4)
 
 > **【給 AI 參謀的最高覆寫指令】**
-> 如果對方面試官問到的問題，命中了以下 Q&A 清單中的題目，在產生 [Suggested Script] 時，**請你必須 100% 照抄我列出的「標準答案（原汁原味）」，絕對不允許你運用自己的語言重寫或是濃縮修飾！**
+> 如果與會夥伴 (Partner) 提問或討論的內容中，命中了以下矩陣中的關鍵議題，在產生 [Suggested Script] 時，**您必須 100% 照抄我列出的「標準對策（原汁原味）」，絕對不允許您運用自己的語言重寫或是濃縮修飾！**
 
 ---
 
-## Q0. Tell me about yourself / Introduce yourself (自我介紹)
+## Q0. 自我介紹與核心定位 (Professional Introduction)
 * **標準答案：** "I am a Senior Software Architect with 15 years of experience building mission-critical systems across the full stack—from cross-platform C++ application layers to large-scale AWS cloud infrastructures. My unique strength is 'Schnittstellenkompetenz'—the cross-layer expertise that bridges hardware constraints with scalable cloud services. I am now relocating permanently to Germany for my children's education and am committed to a long-term career here applying my end-to-end expertise."
 
 ## Q1. Why did you leave your previous job? / Why do you want to relocate to Germany? (為什麼來德國？)
@@ -42,7 +42,7 @@
 * **標準答案：** "An RD's schema update once locked our production DB. My biggest mistake was hesitating for 10 minutes deciding whether to abort it. I learned that human hesitation delays critical rollbacks. To fix this systemically, I engineered an ephemeral, anonymized 'prod-clone trial run' pipeline for safe, GDPR-compliant testing."
 
 ## Q10. What are your salary expectations? (期望薪資？)
-> 🚨 **AI 參謀請注意：不可給出死板的單一數字！請依據當下的面試情境與公司等級，選擇對應的策略生成講稿：**
+> 🚨 **AI 參謀請注意：不可給出死板的單一數字！請依據當下的「商業對話情境」與公司等級，選擇對應的策略生成講稿：**
 * **如果是頂級大廠 (Siemens, Bosch 等架構師職缺)：** "Based on my 15 years of end-to-end Architect experience, my expectation is around €85,000 to €95,000. However, I am highly flexible depending on the complete package and the long-term project scope."
 * **如果是穩定度高但技術挑戰較低的職缺 (例如 IT Support, ERP 支援, TPC 等)：** "Given the role's scope, I am targeting around €75,000, assuming clear structures for overtime compensation. For me, the exact number is flexible; I highly value stability and team culture."
 * **萬用周旋金句 (當不想先給數字時)：** "I am open to negotiating the complete compensation package. My primary focus is finding a role with exciting technological challenges where I can build a long-term career in Germany."
