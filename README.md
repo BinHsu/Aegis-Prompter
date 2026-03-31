@@ -1,9 +1,13 @@
-# 🕵️‍♂️ Staff Officer (AI 會議參謀)
+# 🕵️‍♂️ Staff Officer (AI 遠端會議參謀)
 
-> **"Turn every interview into a strategic advantage."**
-> 一個基於 Apple Silicon NPU 定製、隱私優先的即時面試決策輔助系統。
+> **"Turn every remote meeting into a strategic advantage."**
+> 一個基於 Apple Silicon NPU 定製、專為「遠端面試與技術會議」設計的即時決策輔助系統。
 
 ---
+
+## 🎯 專案定位
+本專案專為 **遠端面試 (Remote Interviews)** 打造。透過 `BlackHole` 攔截遠端面試官的語音，並結合本地 NPU 推論，在不影響視訊品質的前提下，提供即時的面試防禦戰術。
+*(目前正處於 Mock Interview 高強度練習階段)*
 
 ## 🚀 技術核心 (Tech Stack)
 
