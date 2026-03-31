@@ -4,11 +4,33 @@ import sounddevice as sd
 import queue
 import threading
 import mlx_whisper
+import datetime
 
 # 加入全域的 NPU 推論鎖，防止雙麥克風同時講話時，兩個跑在背景的 Thread 同時搶用 MLX 資源，導致 Apple Metal 底層崩潰 (Segmentation fault)
 NPU_LOCK = threading.Lock()
 
 class Transcriber:
+    @staticmethod
+    def find_device_index(keywords, fallback_to_default=True):
+        """自動偵測音訊設備編號：根據關鍵字順序進行匹配"""
+        import sounddevice as sd
+        devices = sd.query_devices()
+        
+        # 1. 精確權重匹配
+        for kw in keywords:
+            for i, dev in enumerate(devices):
+                if kw.lower() in dev['name'].lower() and dev['max_input_channels'] > 0:
+                    return i, dev['name']
+        
+        # 2. 備案：如果都沒找到，且 fallback 為真，則使用系統預設輸入
+        if fallback_to_default:
+            default_input = sd.default.device[0]
+            if default_input >= 0:
+                dev_info = sd.query_devices(default_input)
+                return default_input, f"{dev_info['name']} (System Default)"
+                
+        return None, "Not Found"
+
     def __init__(self, device_idx, role, buffer_instance, model_path="mlx-community/whisper-large-v3-turbo"):
         self.device_idx = device_idx
         self.role = role
@@ -24,10 +46,13 @@ class Transcriber:
         self.audio_queue = queue.Queue()
         self.is_running = False
         
-        print(f"[{self.role}] 預載 Whisper 模型... (這可能需要幾秒鐘，依賴外接硬碟讀寫)")
-        # Warmup：隨便送一段空白聲音讓 NPU 預熱模型
+        # 關鍵修正：預載模型時必須加鎖，防止兩個 Thread 同時搶用 NPU 導致死鎖
         with NPU_LOCK:
+            print(f"[{self.role}] 預載 Whisper 模型... (這可能需要幾秒鐘，依賴外接硬碟讀寫)")
+            # 此處會載入模型到 NPU (mlx-whisper 特定行為)
+            # 使用 Dummy 固定資料長度來觸發 NPU 權限與模型載入建置
             mlx_whisper.transcribe(np.zeros(16000, dtype=np.float32), path_or_hf_repo=self.model_path)
+        
         print(f"[{self.role}] NPU 模型預載完畢！隨時可以錄音。")
         
     def _audio_callback(self, indata, frames, time_info, status):
@@ -52,8 +77,8 @@ class Transcriber:
         speech_buffer = []
         silence_frames = 0
         
-        # 設定「斷句門檻」：連遇 0.6 秒無人聲，就認定一句話講完了
-        silence_flush_limit = int(0.6 / 0.03) 
+        # 設定「斷句門檻」：連遇 0.45 秒無人聲，就認定一句話講完了 (原本 0.6s)
+        silence_flush_limit = int(0.45 / 0.03) 
         
         while self.is_running:
             try:
@@ -98,7 +123,8 @@ class Transcriber:
                         # [防幻覺機制]: 如果 Whisper 無中生有生出這些雜訊，濾掉
                         hallucinations = ["字幕", "Subtitles", "Amara.org", "Thank you.", "謝謝", "請訂閱"]
                         if not any(h in text for h in hallucinations):
-                            print(f"💬 [{self.role}]: {text}", flush=True)
+                            timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+                            print(f"[{timestamp}] 💬 [{self.role}]: {text}", flush=True)
                             self.buffer.add_message(self.role, text)
 
             except queue.Empty:
@@ -126,5 +152,3 @@ class Transcriber:
         if hasattr(self, 'stream'):
             self.stream.stop()
             self.stream.close()
-        if hasattr(self, 'thread'):
-            self.thread.join()

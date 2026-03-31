@@ -10,6 +10,8 @@ class DialogueBuffer:
         self.max_history = max_history
         # Thread Lock 防止面試中雙方搶話造成的資料覆蓋 Race Condition
         self.lock = threading.Lock()
+        self.current_advice = "等待對話..."
+        self.is_thinking = False
         
     def add_message(self, role, text):
         with self.lock:
@@ -24,6 +26,15 @@ class DialogueBuffer:
             # 若超過設定上限，彈出最舊的對話（Sliding Window 機制）
             if len(self.buffer) > self.max_history:
                 self.buffer.pop(0)
+
+    def set_advice(self, advice, is_thinking=False):
+        with self.lock:
+            self.current_advice = advice
+            self.is_thinking = is_thinking
+
+    def get_advice(self):
+        with self.lock:
+            return self.current_advice, self.is_thinking
 
     def get_full_dialogue(self):
         """回傳目前緩衝區內所有結構化資料"""
@@ -43,6 +54,13 @@ class DialogueBuffer:
                 formatted.append(f"{msg['role']}: {msg['text']}")
             return "\n".join(formatted)
             
+    def get_last_role(self):
+        """回傳緩衝區中最後一個發言者的角色"""
+        with self.lock:
+            if not self.buffer:
+                return None
+            return self.buffer[-1]['role']
+
     def clear(self):
         """清空所有對話記錄，通常在面試結束時使用"""
         with self.lock:
