@@ -105,25 +105,17 @@ def toggle_recording():
         st.session_state.buffer.clear()
         st.session_state.advice = "監聽中...等待對方發言。"
         
-        def find_device(keyword):
-            for i, dev in enumerate(sd.query_devices()):
-                if keyword.lower() in dev['name'].lower() and dev['max_input_channels'] > 0:
-                    return i
-            return sd.default.device[0]
-            
-        # 啟動 M4 雙軌並發轉錄大腦
-        t_mic = Transcriber(device_idx=find_device("MacBook"), role="您 (Bin)", buffer_instance=st.session_state.buffer)
-        t_bh = Transcriber(device_idx=find_device("BlackHole"), role="與會者 (對方)", buffer_instance=st.session_state.buffer)
-        
-        t_mic.start()
-        t_bh.start()
-        
-        st.session_state.transcriber_mic = t_mic
-        st.session_state.transcriber_bh = t_bh
+        # 直接使用啟動時已經精確偵測好的引擎
+        if st.session_state.transcriber_me:
+            st.session_state.transcriber_me.start()
+        if st.session_state.transcriber_other:
+            st.session_state.transcriber_other.start()
     else:
         st.session_state.is_running = False
-        if st.session_state.transcriber_mic: st.session_state.transcriber_mic.stop()
-        if st.session_state.transcriber_bh: st.session_state.transcriber_bh.stop()
+        if st.session_state.transcriber_me: 
+            st.session_state.transcriber_me.stop()
+        if st.session_state.transcriber_other: 
+            st.session_state.transcriber_other.stop()
 
 # ===== 極簡頂部列 (標題 + 按鈕) =====
 col_title, col_btn = st.columns([3, 1])
