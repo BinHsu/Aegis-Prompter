@@ -7,7 +7,7 @@
 ---
 
 ## Personal Info
-- **Name:** Bin Hsu (許彬)
+- **Name:** Bin Hsu
 - **Email:** pcpunkhades@gmail.com
 - **Mobile:** +886 970 772375 (Taiwan, until ~2026-03-25)
 - **Landing date:** 2026-03-25 (Berlin)

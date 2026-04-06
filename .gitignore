@@ -24,3 +24,6 @@ env/
 
 # Python Cache
 .pip_cache/
+
+# Meeting History
+history/

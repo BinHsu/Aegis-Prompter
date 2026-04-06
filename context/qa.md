@@ -1,51 +1,172 @@
-# 🛡️ 技術對話與職涯戰略矩陣 (Technical Strategy Matrix v4)
+# First-Round Interview Cheatsheet
 
-> **【給 AI 參謀的最高覆寫指令】**
-> 如果與會夥伴 (Partner) 提問或討論的內容中，命中了以下矩陣中的關鍵議題，在產生 [Suggested Script] 時，**您必須 100% 照抄我列出的「標準對策（原汁原味）」，絕對不允許您運用自己的語言重寫或是濃縮修飾！**
+> **How to use:** Each question has a ready-to-speak English script.
+> Memorize the core answer. The bullet points are your backup if you blank out.
+> ⚠️ = watch-out / tricky framing reminder
 
 ---
 
-## Q0. 自我介紹與核心定位 (Professional Introduction)
-* **標準答案：** "I am a Senior Software Architect with 15 years of experience building mission-critical systems across the full stack—from cross-platform C++ application layers to large-scale AWS cloud infrastructures. My unique strength is 'Schnittstellenkompetenz'—the cross-layer expertise that bridges hardware constraints with scalable cloud services. I am now relocating permanently to Germany for my children's education and am committed to a long-term career here applying my end-to-end expertise."
+## Q0. Self-Introduction (開場白)
 
-## Q1. Why did you leave your previous job? / Why do you want to relocate to Germany? (為什麼來德國？)
-* **標準答案：** "I am relocating primarily for my children's education in the German school system. My family will permanently join me immediately after I pass my 6-month probation period. Because my family's future depends on this transition, I am highly motivated to deliver value quickly and establish a stable, long-term career."
+**Script:**
+> "I'm a Senior Software Architect with 15 years of experience building mission-critical systems across the full stack — from cross-platform C++ edge SDKs to large-scale AWS cloud infrastructure. My unique strength is the ability to bridge hardware constraints and cloud scale — most engineers live in one world or the other. I'm now relocating permanently to Germany for my children's education, and I'm fully committed to a long-term career here."
 
-## Q2. Why should we hire you? / What differentiates you from other candidates? (為什麼錄用你？)
-* **標準答案：** "I bring a unique 'Hardware-to-Cloud' perspective. Unlike many cloud architects, I understand low-level constraints from my years building C++ Edge SDKs. This means I architect cloud systems that are truly optimized for your specific industrial hardware, reducing overall system latency and cost."
+**Backup bullets:**
+- 10 years at VIVOTEK: C++ SDK, OpenVPN device management, 1,000+ cameras
+- 5 years at E2 Nova: full ownership of 5 AWS accounts, 3 regions, 4–5M daily requests
+- AWS SAP certified (March 2026), ISO 27001/27701 audits 3 consecutive years
 
-## Q3. What is your biggest professional achievement? (最大的職業成就？)
-* **標準答案：** "At E2 Nova, I identified a database bottleneck causing 6,000 daily timeouts. I designed a ProxySQL connection-pooling layer via Infrastructure as Code, driving timeouts to absolute zero without changing any application code. It stabilized our platform for IPO and handled over 5 million daily requests."
+---
 
-## Q4. What are your biggest strengths? (你的優勢是什麼？)
-* **標準答案：** "My biggest strength is my 'Schnittstellenkompetenz'—the ability to act as a technical bridge. I have deep production experience in both high-concurrency C++ at the Edge and large-scale AWS cloud infrastructure. This allows me to architect end-to-end systems where others only see the cloud or the hardware, significantly reducing communication overhead between teams."
+## Q1. Why Germany / Why relocate? (為什麼來德國？)
 
-## Q5. Tell me about a time you had a conflict with an angry co-worker. (如何處理衝突？)
-* **標準答案：** "I first ensure we take a step back to cool down. Then, I focus purely on the technical bottlenecks. Once we align on the exact architectural constraints, we define clear action items. I always keep communication objective and transparent."
+**Script:**
+> "I'm relocating primarily for my children's education in the German school system. This is a multi-year family commitment — once the children are enrolled, the family stays. I specifically chose Berlin for its strong tech community and English-friendly environment while my German improves, but I'm open to all of Germany."
 
-## Q6. What kind of environment do you work best in? (偏好什麼樣的工作環境？)
-* **標準答案：** "I thrive in high-discipline, structured environments. When managing complex systems, I believe that rigorous documentation, strict CI/CD pipelines, and meticulous peer reviews are the only way to ensure long-term, carrier-grade reliability."
+**If asked "Will you leave after 3 months?":**
+> "No. The children's school enrollment is the anchor. Leaving early would disrupt their education — that's the strongest commitment signal I can give."
 
-## Q7. Where do you see yourself in 5 years? / The 5-Year Goal (五年後的目標？)
-* **標準答案：** "In five years, I see myself as a Technical Principal here, having established a carrier-grade infrastructure that is fully automated and compliant with German industrial standards. My goal is to bridge the gap between your hardware engineering and cloud services to create the most reliable industrial platform in the market."
+**Bonus (if asked about German connection):**
+> "Throughout my career I've worked with German-engineered technology — Siemens industrial protocols, Bosch sensor integration, and VIVOTEK hardware certified to EN50155 deployed in European transit systems."
 
-## Q8. What can we expect from you if we hire you? (錄用後能期待你什麼？)
-* **標準答案：** "You can expect me to quickly master your existing systems, and systematically evolve them into scalable, automated architectures using Infrastructure as Code. I will focus on high availability, clear API boundaries, and eliminating manual operational errors."
+---
 
-## Q9. What is your biggest weakness? (最大的弱點是什麼？)
-* **標準答案：** "My biggest weakness currently is my German fluency. My latest 5-year career has been in global English environments. However, because my family is relocating permanently, I am taking daily classes to reach B1 level within 18 months."
+## Q2. Why should we hire you? (為什麼是你？)
 
-## Q8. Tell me about a time you showed leadership or mentored others. (帶領團隊或指導新人的經驗？)
-* **標準答案：** "At D2 Nova, while managing complex backend systems, I noticed knowledge transfer was too slow among our team. I spearheaded a shift to strict Infrastructure-as-Code and created a structured 2-month onboarding curriculum, empowering my 3 newbies to grow and contribute to the team."
+**Script:**
+> "I bring a unique hardware-to-cloud perspective. Unlike most cloud architects who only see the cloud layer, I understand low-level hardware constraints from a decade building C++ edge SDKs. This means I design cloud systems that are truly optimized for the underlying hardware — reducing latency and cost in ways a purely cloud-native engineer wouldn't think to look for."
 
-## Q9. Tell me about your biggest failure or a time you made a mistake. (最大的失敗或錯誤？)
-* **標準答案：** "An RD's schema update once locked our production DB. My biggest mistake was hesitating for 10 minutes deciding whether to abort it. I learned that human hesitation delays critical rollbacks. To fix this systemically, I engineered an ephemeral, anonymized 'prod-clone trial run' pipeline for safe, GDPR-compliant testing."
+**Backup bullets:**
+- Not just theory: 479 CloudFormation templates, 155 Jenkins pipelines, 49 ASGs — inherited and evolved
+- Shipped under pressure: ProxySQL eliminated 6,000+ daily timeouts without any app code changes
+- ISO 27001 + DR drill ownership 3 years running
 
-## Q10. What are your salary expectations? (期望薪資？)
-> 🚨 **AI 參謀請注意：不可給出死板的單一數字！請依據當下的「商業對話情境」與公司等級，選擇對應的策略生成講稿：**
-* **如果是頂級大廠 (Siemens, Bosch 等架構師職缺)：** "Based on my 15 years of end-to-end Architect experience, my expectation is around €85,000 to €95,000. However, I am highly flexible depending on the complete package and the long-term project scope."
-* **如果是穩定度高但技術挑戰較低的職缺 (例如 IT Support, ERP 支援, TPC 等)：** "Given the role's scope, I am targeting around €75,000, assuming clear structures for overtime compensation. For me, the exact number is flexible; I highly value stability and team culture."
-* **萬用周旋金句 (當不想先給數字時)：** "I am open to negotiating the complete compensation package. My primary focus is finding a role with exciting technological challenges where I can build a long-term career in Germany."
+---
 
-## Q11. Are you willing to do on-call shifts? (能夠接受 On-Call 輪班嗎？)
-* **標準答案：** "I am comfortable with on-call duties if they are structured professionally. From my experience managing a 24/7 AWS infrastructure, sustainable on-call requires a clear 'Rufbereitschaft' allowance, strict adherence to the 11-hour legal rest period, and a robust night-shift premium, rather than simple 1-to-1 time-in-lieu."
+## Q3. Biggest professional achievement (最大成就)
+
+**Script:**
+> "At E2 Nova, I identified a database bottleneck causing over 6,000 connection timeouts per day. Rather than rewriting 20+ microservices, I designed an infrastructure-layer solution: a ProxySQL connection-pooling cluster provisioned entirely as Infrastructure as Code. It compressed 5,000 static DB connections down to 29 persistent ones, improved query P95 from 53% to 87% within 5ms SLA, and eliminated all timeouts — with zero application code changes. That stability directly supported the company's IPO preparation."
+
+---
+
+## Q4. Biggest strengths (強項)
+
+**Script:**
+> "My biggest strength is the ability to bridge hardware constraints and cloud scale — most engineers live in one world or the other. I have deep production experience at both ends: high-concurrency C++ at the edge and large-scale AWS infrastructure. This lets me architect end-to-end systems where others only see one layer, which significantly reduces the communication overhead between hardware and cloud teams."
+
+**Secondary strength (if asked for more):**
+> "I'm also unusually comfortable inheriting complex systems. At E2 Nova I became the single engineer who fully understood a 5-account, 3-region platform. That kind of full-context ownership is rare and very hard to replace."
+
+---
+
+## Q5. Biggest weakness (弱點)
+
+**Script:**
+> "My biggest weakness right now is German fluency. My last five years were in global English-speaking environments. Because my family is relocating permanently, I'm taking daily classes and targeting B1 within 18 months of starting a role."
+
+⚠️ **Do not apologize. State it matter-of-factly and pivot to the commitment.**
+
+---
+
+## Q6. Tell me about a failure / mistake (失敗經驗 STAR)
+
+**Script:**
+> "A developer pushed a MySQL ENUM rename to production — what looked like a metadata change actually triggered a full table rewrite and locked the entire platform for 60 minutes. My mistake was hesitating 10 minutes between 'wait for it to finish' and 'kill the process.' I learned that hesitation on a live incident is itself a failure. After resolving it, I built a systemic fix: all schema migrations now run against an automated, production-sized anonymized clone before release. The clone is GDPR-compliant — real PII is masked before it ever leaves production. We also added a CI check that flags ALGORITHM=COPY risks in pull requests."
+
+**Key insight to land:**
+> "I don't just fix failures. I build systems that make them impossible to repeat."
+
+---
+
+## Q7. Tell me about a conflict / difficult coworker (衝突處理)
+
+**Script:**
+> "I first make sure we both step back to cool down — technical arguments get worse when they become personal. Then I shift the conversation to the specific technical constraints: what are the actual bottlenecks, what are the tradeoffs? Once we're aligned on the constraints, the solution usually becomes obvious. I always keep communication objective and document the outcome so there's no ambiguity later."
+
+---
+
+## Q8. Tell me about leadership / mentoring (帶人經驗)
+
+**Script:**
+> "At D2 Nova, I noticed that new engineers were taking six months to become productive. I identified the root cause: knowledge was siloed. I built a structured two-month technical onboarding curriculum — documented, peer-reviewed, openly shared. New engineers adopted it and ramp time dropped from six months to two. I also led the handoff of DeviceCenter to a three-person offshore team in India, which required me to translate institutional knowledge into written documentation under a deadline."
+
+---
+
+## Q9. What kind of environment do you work best in? (偏好工作環境)
+
+**Script:**
+> "I thrive in high-discipline, structured environments. When managing complex systems, rigorous documentation, strict CI/CD pipelines, and thorough peer review aren't overhead — they're what makes everything else possible. I'm also comfortable being the person who sets that standard if it doesn't exist yet."
+
+---
+
+## Q10. Where do you see yourself in 5 years? (五年後)
+
+**Script:**
+> "In five years I see myself as a Technical Principal, having built a fully automated, carrier-grade infrastructure that's become a competitive advantage for the company. My goal is to bridge hardware engineering and cloud services — and to have grown the team around me so that knowledge is shared, not siloed."
+
+---
+
+## Q11. What can we expect from you? (錄用後能期待什麼)
+
+**Script:**
+> "You can expect me to master your existing systems quickly — I have a track record of inheriting complex platforms and becoming the go-to person. From there I'll systematically improve automation, reduce manual operations, and improve observability. I won't introduce changes for the sake of it; every improvement will be tied to a production problem."
+
+---
+
+## Q12. Are you okay with on-call? (接受 On-Call 嗎)
+
+**Script:**
+> "Yes, I'm comfortable with on-call if it's structured professionally. From managing a 24/7 AWS platform, I know that sustainable on-call requires a clear Rufbereitschaft allowance, strict adherence to the 11-hour legal rest period, and a night shift premium — not just 1-to-1 time in lieu."
+
+---
+
+## Q13. Salary expectations (薪資期望)
+
+> ⚠️ **Calibrate by role level — do not give a number first if you can avoid it.**
+
+**Top-tier / Architect roles (Siemens, Bosch, Deutsche Bank):**
+> "Based on 15 years of end-to-end architect experience, I'm targeting €85,000–€95,000. That said, I'm flexible depending on the full package and project scope."
+
+**Standard DevOps / Platform / Senior SWE roles:**
+> "I'm targeting around €75,000–€85,000 for a senior individual contributor role. The exact number is flexible — I prioritize technical challenge and team culture."
+
+**Deflect if needed:**
+> "I'm open to negotiating the full compensation package. My priority is finding a role with meaningful technical challenges where I can build a long-term career in Germany."
+
+---
+
+## Q14. Are you currently employed? / Current company (目前就業狀態)
+
+**Script:**
+> "I left E2 Nova in March 2026 to relocate to Germany on my Chancenkarte. I'm currently in Berlin, fully available, and actively interviewing."
+
+⚠️ **Do not say "N/A" in forms — say "E2 Nova (departed March 2026)" or leave blank and explain verbally.**
+
+---
+
+## Q15. Work authorization (工作簽證)
+
+**Script:**
+> "I'm currently on a German Chancenkarte (Opportunity Card), which authorizes me to work independently without employer sponsorship. Once I receive an employment contract, I convert it to an Aufenthaltserlaubnis and eventually a Blaue Karte EU. No sponsorship required from the employer."
+
+---
+
+## Quick Reference — Key Numbers
+
+| Metric | Value |
+|--------|-------|
+| Experience | 15 years total (10 VIVOTEK + 5 E2 Nova) |
+| Daily traffic (E2 Nova prod) | 4–5 million HTTP requests |
+| CloudFormation templates | 479 |
+| Jenkins pipelines | 155 (38,900 lines) |
+| ASGs managed | 49 |
+| DB connections (before ProxySQL) | 5,000 static |
+| DB connections (after ProxySQL) | 29 persistent |
+| Daily timeouts eliminated | 6,000+ |
+| DB P95 improvement | 53% → 87% within 5ms |
+| Cameras managed (DeviceCenter) | 1,000+ (arch supports 3,000) |
+| Onboarding ramp improvement | 6 months → 2 months (−66%) |
+| ISO 27001/27701 DR drills | 3 consecutive years, zero major NCs |
+| AWS certifications | SAP (March 2026) + SAA + ISC2 CC |
+| German level | A1, targeting B1 within 18 months |

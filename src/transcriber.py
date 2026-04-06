@@ -31,7 +31,7 @@ class Transcriber:
                 
         return None, "Not Found"
 
-    def __init__(self, device_idx, role, buffer_instance, model_path="mlx-community/whisper-large-v3-turbo"):
+    def __init__(self, device_idx, role, buffer_instance, model_path="mlx-community/distil-whisper-large-v3"):
         self.device_idx = device_idx
         self.role = role
         self.buffer = buffer_instance
@@ -45,6 +45,7 @@ class Transcriber:
         self.vad = webrtcvad.Vad(3)
         self.audio_queue = queue.Queue()
         self.is_running = False
+        self.last_rms = 0.0 # 用於 UI 顯示的音量強弱
         
         # 關鍵修正：預載模型時必須加鎖，防止兩個 Thread 同時搶用 NPU 導致死鎖
         with NPU_LOCK:
@@ -63,6 +64,11 @@ class Transcriber:
         # 轉換為 WebRTCVAD 需要的 16-bit PCM Mono
         audio_int16 = (indata[:, 0] * 32767).astype(np.int16)
         
+        # 計算即時音量 (RMS) 供給 UI 顯示
+        # 為了平滑顯示，稍微加強一點動態感
+        rms = np.sqrt(np.mean(indata**2))
+        self.last_rms = float(rms)
+        
         try:
             # 判斷這 30 毫秒內有沒有人類聲音的頻率
             is_speech = self.vad.is_speech(audio_int16.tobytes(), self.sample_rate)
@@ -72,13 +78,17 @@ class Transcriber:
         # 將判斷結果與聲音片段排入隊列，交給背後的轉譯 Thread 處理
         self.audio_queue.put((audio_int16, is_speech))
 
+    def get_rms(self):
+        """獲取最近一次的音量強度 (0.0 ~ 1.0)"""
+        return self.last_rms
+
     def _processing_thread(self):
         """背景工作線程：收集 VAD 篩選過的句子片段，並送給 Whisper 解析"""
         speech_buffer = []
         silence_frames = 0
         
-        # 設定「斷句門檻」：連遇 0.45 秒無人聲，就認定一句話講完了 (原本 0.6s)
-        silence_flush_limit = int(0.45 / 0.03) 
+        # 設定「平衡性斷句門檻」：連遇 0.4 秒無人聲，就認定一句話講完 (確保準確度穩定)
+        silence_flush_limit = int(0.4 / 0.03) 
         
         while self.is_running:
             try:
@@ -107,7 +117,7 @@ class Transcriber:
                         continue
                         
                     # ======== 核心：透過 Apple M4 NPU 進行光速轉譯 ========
-                    # 確保同時間只有一個執行緒在使用 NPU
+                    # 註：mlx-whisper 目前僅支援 Greedy Decoding，不需指定 beam_size
                     with NPU_LOCK:
                         result = mlx_whisper.transcribe(
                             audio_float32, 
@@ -125,7 +135,7 @@ class Transcriber:
                         if not any(h in text for h in hallucinations):
                             timestamp = datetime.datetime.now().strftime("%H:%M:%S")
                             print(f"[{timestamp}] 💬 [{self.role}]: {text}", flush=True)
-                            self.buffer.add_message(self.role, text)
+                            self.buffer.add_entry(self.role, text)
 
             except queue.Empty:
                 continue

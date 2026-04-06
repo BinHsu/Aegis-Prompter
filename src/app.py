@@ -3,6 +3,8 @@ import time
 import os
 import sys
 import sounddevice as sd
+import atexit
+import signal
 
 # 確保能從 src 載入模組
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -11,8 +13,28 @@ from dialogue_buffer import DialogueBuffer
 from transcriber import Transcriber
 from gemini_advisor import GeminiAdvisor
 
-# ===== 核心狀態初始化 (最優先，確保全域變數存在) =====
-if "init_done" not in st.session_state:
+# 全域列表用於追蹤活動中的錄音器，實作「優雅停機」
+ACTIVE_TRANSCRIBERS = []
+
+def cleanup_resources():
+    """程式結束時的清道夫：強制釋放音訊硬體"""
+    for t in ACTIVE_TRANSCRIBERS:
+        try:
+            if hasattr(t, 'stop'):
+                t.stop()
+        except:
+            pass
+    # 針對一些頑固的 PortAudio 殘留進行強行釋放
+    try:
+        sd.stop()
+    except:
+        pass
+
+# 註冊退出掛鉤
+atexit.register(cleanup_resources)
+
+# ===== 核心狀態初始化 (最高優先權) =====
+if "init_v2" not in st.session_state:
     st.session_state.buffer = DialogueBuffer(max_history=8)
     st.session_state.advisor = GeminiAdvisor()
     st.session_state.is_running = False
@@ -24,19 +46,25 @@ if "init_done" not in st.session_state:
     st.session_state.last_stable_advice = ""
     
     # 動態音訊偵測
-    me_idx, me_name = Transcriber.find_device_index(["MacBook Air Microphone", "Built-in Microphone", "Microphone"], fallback_to_default=True)
-    other_idx, other_name = Transcriber.find_device_index(["BlackHole"], fallback_to_default=False)
+    me_idx, me_name = Transcriber.find_device_index(["MacBook Air Microphone", "Built-in Microphone"], fallback_to_default=True)
+    other_idx, other_name = Transcriber.find_device_index(["BlackHole 2ch", "BlackHole"], fallback_to_default=False)
     
     st.session_state.me_name = me_name
     st.session_state.other_name = other_name
-    st.session_state.transcriber_me = Transcriber(role="您 (Bin)", device_idx=me_idx, buffer_instance=st.session_state.buffer)
+    
+    # 初始化底層實體
+    t_me = Transcriber(role="您 (Bin)", device_idx=me_idx, buffer_instance=st.session_state.buffer)
+    st.session_state.transcriber_me = t_me
+    ACTIVE_TRANSCRIBERS.append(t_me)
     
     if other_idx is not None:
-        st.session_state.transcriber_other = Transcriber(role="與會者 (對方)", device_idx=other_idx, buffer_instance=st.session_state.buffer)
+        t_other = Transcriber(role="與會者 (對方)", device_idx=other_idx, buffer_instance=st.session_state.buffer)
+        st.session_state.transcriber_other = t_other
+        ACTIVE_TRANSCRIBERS.append(t_other)
     else:
         st.session_state.transcriber_other = None
         
-    st.session_state.init_done = True
+    st.session_state.init_v2 = True
 
 # ===== 全域安全驗證碼 (防止每連線重複產生) =====
 import random
@@ -100,44 +128,87 @@ if not is_local and not st.session_state.authenticated:
         st.stop()
 
 def toggle_recording():
-    if not st.session_state.is_running:
-        st.session_state.is_running = True
-        st.session_state.buffer.clear()
-        st.session_state.advice = "監聽中...等待對方發言。"
+    """切換錄製狀態與初始化存檔 Session"""
+    if st.session_state.is_running:
+        # 停止運行
+        st.session_state.is_running = False
+        if st.session_state.transcriber_me:
+            st.session_state.transcriber_me.stop()
+        if st.session_state.transcriber_other:
+            st.session_state.transcriber_other.stop()
+    else:
+        # 開始對話：掃描設備
+        me_idx, me_name = Transcriber.find_device_index(["MacBook Air Microphone", "Built-in Microphone"], fallback_to_default=True)
+        other_idx, other_name = Transcriber.find_device_index(["BlackHole 2ch", "BlackHole"], fallback_to_default=False)
         
-        # 直接使用啟動時已經精確偵測好的引擎
+        st.session_state.me_name = me_name
+        st.session_state.other_name = other_name
+        
+        # 💡 生成存檔 Session ID
+        session_id = time.strftime("%Y-%m-%d_%H%M%S")
+        st.session_state.buffer.start_session(session_id)
+        
+        # 初始化實體
+        st.session_state.transcriber_me = Transcriber(role="您 (Bin)", device_idx=me_idx, buffer_instance=st.session_state.buffer)
+        if other_idx is not None:
+            st.session_state.transcriber_other = Transcriber(role="與會者 (對方)", device_idx=other_idx, buffer_instance=st.session_state.buffer)
+        
+        # 啟動錄製
         if st.session_state.transcriber_me:
             st.session_state.transcriber_me.start()
         if st.session_state.transcriber_other:
             st.session_state.transcriber_other.start()
-    else:
-        st.session_state.is_running = False
-        if st.session_state.transcriber_me: 
-            st.session_state.transcriber_me.stop()
-        if st.session_state.transcriber_other: 
-            st.session_state.transcriber_other.stop()
+            
+        st.session_state.is_running = True
+
+# ===== 專業深色架構師 UI 樣式 =====
+st.markdown("""
+<style>
+    .reportview-container { background: #0e1117; }
+    .transcript-box {
+        background-color: #1e2130; border-radius: 10px; padding: 20px;
+        height: 550px; overflow-y: auto; color: #e0e0e0; font-family: 'Inter', sans-serif;
+        border: 1px solid #30363d; line-height: 1.6;
+    }
+    .advisor-box {
+        background-color: #0d1117; border-radius: 10px; padding: 25px;
+        height: 550px; border: 2px solid #238636; position: relative;
+    }
+    .cheatsheet-section { color: #58a6ff; font-size: 1.1rem; margin-bottom: 15px; border-bottom: 1px solid #30363d; padding-bottom: 10px; }
+    .script-section { color: #f0f6fc; font-size: 1.25rem; font-weight: 500; }
+    .filler-text { color: #8b949e; font-style: italic; font-size: 0.9rem; margin-top: 20px; }
+    .stProgress > div > div > div > div { background-image: linear-gradient(to right, #238636, #2ea043); }
+</style>
+""", unsafe_allow_html=True)
 
 # ===== 極簡頂部列 (標題 + 按鈕) =====
 col_title, col_btn = st.columns([3, 1])
 with col_title:
-    st.markdown("### 🕵️‍♂️ Staff Officer")
+    st.title("🕵️‍♂️ Staff Officer")
 with col_btn:
-    if not st.session_state.is_running:
-        if st.button("🚀 開始全程參謀", use_container_width=True, type="primary"):
-            toggle_recording()
-            st.rerun()
-    else:
-        if st.button("⏹️ 結束並清除", use_container_width=True):
-            toggle_recording()
-            st.rerun()
+    btn_label = "⏹️ 結束對話" if st.session_state.is_running else "🚀 開始對話"
+    st.button(btn_label, on_click=toggle_recording, use_container_width=True)
 
+# ===== 音訊雷達 (Audio Heartbeat) =====
+if st.session_state.is_running:
+    st.markdown("---")
+    col_v1, col_v2 = st.columns(2)
+    with col_v1:
+        rms_me = st.session_state.transcriber_me.get_rms() if st.session_state.transcriber_me else 0
+        st.caption(f"🎤 您的聲音: {st.session_state.me_name}")
+        st.progress(min(rms_me * 15, 1.0)) # 放大 15 倍感應
+    with col_v2:
+        rms_other = st.session_state.transcriber_other.get_rms() if st.session_state.transcriber_other else 0
+        st.caption(f"🎧 對方聲音: {st.session_state.other_name}")
+        st.progress(min(rms_other * 15, 1.0))
+else:
     # ===== 狀態列 (偵測到的設備回饋) =====
     st.markdown("---")
     col_a, col_b = st.columns(2)
     with col_a:
-        st.caption(f"🎤 您的麥克風: {st.session_state.get('me_name', '未偵測')}")
+        st.caption(f"🎤 預定麥克風: {st.session_state.get('me_name', '未偵測')}")
     with col_b:
-        st.caption(f"🎧 對方設備: {st.session_state.get('other_name', '未偵測')}")
+        st.caption(f"🎧 預定對方設備: {st.session_state.get('other_name', '未偵測')}")
 
 # ===== 雙欄位排版 =====
 col_left, col_right = st.columns([1, 2])
@@ -205,6 +276,17 @@ if st.session_state.is_running:
     now = time.time()
     last_role = st.session_state.buffer.get_last_role()
     
+    # ⚡️ [產品級優化]：實時偵測「救命小抄」 (零延遲本地匹配)
+    full_dialogue = st.session_state.buffer.get_full_dialogue()
+    if full_dialogue:
+        last_entry = full_dialogue[-1]
+        # 如果是對方剛說完話，立即嘗試本地匹配
+        if last_entry['role'] == "與會者 (對方)":
+            hint = st.session_state.advisor.get_local_hint(last_entry['text'])
+            if hint:
+                header, answer = hint
+                st.session_state.buffer.set_advice(f"⚡️ [救命小抄命中：{header}]\n\n{answer}", is_thinking=False)
+
     # 邏輯：
     # 1. 目前沒在思考
     # 2. 對話內容有更新
@@ -234,13 +316,16 @@ if st.session_state.is_running:
             ).start()
 
     # 為了讓前端 UI 極速反應（特別是手機網頁），將重刷頻率提升到 0.5 秒
-    # 改進：增加更嚴格的異常捕獲，確保關機時不會亂噴 RuntimeError
+    # 改進：增加更嚴格的環境感應與異常捕獲，確保關機時不會亂噴 RuntimeError
     try:
         if st.session_state.is_running:
             time.sleep(0.5)
-            st.rerun()
+            # 只有在 ScriptRunner 依然活躍時才重刷，避免在關機瞬間噴出 Event loop is closed
+            from streamlit.runtime.scriptrunner import get_script_run_ctx
+            if get_script_run_ctx() is not None:
+                st.rerun()
     except (RuntimeError, Exception):
-        # 捕捉 Event loop is closed 等錯誤，直接靜默退出
+        # 捕捉一切關機時的殘留報錯，直接靜默退出
         pass
     finally:
         # 強制清理殘留資源的最後防線
