@@ -26,8 +26,14 @@ if not g_state.is_running:
     g_state.start_recording()
 
 def cleanup_resources():
-    """程式結束時的清道夫：強制釋放音訊硬體"""
+    """程式結束時的清道夫：強制釋放音訊硬體與雲端資源"""
     g_state.stop_recording()
+    if hasattr(g_state, 'advisor') and hasattr(g_state.advisor, 'cached_content_name') and g_state.advisor.cached_content_name:
+        try:
+            g_state.advisor.client.caches.delete(name=g_state.advisor.cached_content_name)
+            print("🧹 已清除雲端快取空間。")
+        except:
+            pass
 
 # 註冊退出掛鉤
 atexit.register(cleanup_resources)

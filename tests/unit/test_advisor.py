@@ -13,7 +13,7 @@ TEST_QA_CONTENT = """
 """
 
 @pytest.fixture
-def advisor_with_mock_qa(tmp_path):
+def mock_context_dir(tmp_path):
     """
     Fixture：建立一個帶有虛擬 QA 資料夾的 Advisor
     """
@@ -22,10 +22,16 @@ def advisor_with_mock_qa(tmp_path):
     qa_file = context_dir / "qa.md"
     qa_file.write_text(TEST_QA_CONTENT, encoding="utf-8")
     
-    # 建立 Advisor，並注入測試目錄
-    advisor = GeminiAdvisor()
-    advisor.qa_index = [] # 清空預設的
-    advisor._index_qa_bank(str(context_dir))
+    return str(context_dir)
+
+@pytest.fixture
+def advisor_with_mock_qa(mock_context_dir, mocker):
+    """
+    Fixture：建立一個帶有虛擬 QA 資料夾的 Advisor (關閉快取連線以避免網路延遲)
+    """
+    mock_client = mocker.patch("google.genai.Client")
+    mock_client.return_value.caches.create.return_value.name = "cachedChunks/mock_123"
+    advisor = GeminiAdvisor(context_dir=mock_context_dir)
     return advisor
 
 def test_advisor_local_index_parsing(advisor_with_mock_qa):
@@ -71,3 +77,51 @@ def test_advisor_gemini_mocking(mocker, advisor_with_mock_qa):
     assert result == "Mocked AI Strategy: Keep building."
     # 驗證是否真的呼叫到了 Client (即便在 Mock 狀態下)
     advisor_with_mock_qa.client.models.generate_content.assert_called_once()
+    
+def test_advisor_dynamic_knowledge_and_caching_fallback(tmp_path, mocker):
+    """驗證當 knowledge.md 存在但快取建立失敗時，是否正確 Fallback 定義 external_context"""
+    context_dir = tmp_path / "context"
+    context_dir.mkdir()
+    
+    # 建構一個 knowledge.md 指向另一個外部資料夾
+    ext_knowledge_dir = tmp_path / "ext_knowledge"
+    ext_knowledge_dir.mkdir()
+    (ext_knowledge_dir / "design.md").write_text("Ext Design patterns context here", encoding="utf-8")
+    
+    knowledge_file = context_dir / "knowledge.md"
+    knowledge_file.write_text(str(ext_knowledge_dir), encoding="utf-8")
+    
+    # 模擬快取失敗
+    mock_client = mocker.patch("google.genai.Client")
+    mock_instance = mock_client.return_value
+    mock_instance.caches.create.side_effect = Exception("Mocked Cache Error")
+    
+    advisor = GeminiAdvisor(context_dir=str(context_dir))
+    
+    # 依據使用者需求，如果快取失敗，直接放棄知識庫，避免拖慢效能。
+    assert advisor.cached_content_name is None
+    assert "Ext Design patterns context here" not in advisor.system_instruction
+
+def test_advisor_caching_success(tmp_path, mocker):
+    """驗證當知識庫讀取成功且快取成功時，不進入 Fallback"""
+    context_dir = tmp_path / "context"
+    context_dir.mkdir()
+    
+    ext_knowledge_dir = tmp_path / "ext_knowledge"
+    ext_knowledge_dir.mkdir()
+    (ext_knowledge_dir / "docs.txt").write_text("Huge text context...", encoding="utf-8")
+    
+    (context_dir / "knowledge.md").write_text(str(ext_knowledge_dir), encoding="utf-8")
+    
+    # 模擬快取成功
+    mock_client = mocker.patch("google.genai.Client")
+    mock_instance = mock_client.return_value
+    mock_cache = mocker.Mock()
+    mock_cache.name = "cachedChunks/mock_123"
+    mock_instance.caches.create.return_value = mock_cache
+    
+    advisor = GeminiAdvisor(context_dir=str(context_dir))
+    
+    assert advisor.cached_content_name == "cachedChunks/mock_123"
+    # Fallback 未觸發，所以 Huge text context 不會出現在 system_instruction 中
+    assert "Huge text context..." not in advisor.system_instruction

@@ -9,7 +9,7 @@
 ## Q0. Self-Introduction (開場白)
 
 **Script:**
-> "I'm a Senior Software Architect with 15 years of experience building mission-critical systems across the full stack — from cross-platform C++ edge SDKs to large-scale AWS cloud infrastructure. My unique strength is the ability to bridge hardware constraints and cloud scale — most engineers live in one world or the other. I'm now relocating permanently to Germany for my children's education, and I'm fully committed to a long-term career here."
+> "I'm a Senior Software Architect with 15 years of experience across edge computing and cloud infrastructure. My core strength is bridging low-level hardware constraints with large-scale cloud systems. I'm now relocating to Germany permanently — my family will be joining me once I'm settled — and I'm looking for a long-term role where I can contribute to cloud modernization and system reliability."
 
 **Backup bullets:**
 - 10 years at VIVOTEK: C++ SDK, OpenVPN device management, 1,000+ cameras
@@ -21,7 +21,8 @@
 ## Q1. Why Germany / Why relocate? (為什麼來德國？)
 
 **Script:**
-> "I'm relocating primarily for my children's education in the German school system. This is a multi-year family commitment — once the children are enrolled, the family stays. I specifically chose Berlin for its strong tech community and English-friendly environment while my German improves, but I'm open to all of Germany."
+> "I left my previous role because my family is permanently relocating to Germany. 
+This is a long‑term decision, and I'm fully committed to building my career here."
 
 **If asked "Will you leave after 3 months?":**
 > "No. The children's school enrollment is the anchor. Leaving early would disrupt their education — that's the strongest commitment signal I can give."
@@ -34,7 +35,8 @@
 ## Q2. Why should we hire you? (為什麼是你？)
 
 **Script:**
-> "I bring a unique hardware-to-cloud perspective. Unlike most cloud architects who only see the cloud layer, I understand low-level hardware constraints from a decade building C++ edge SDKs. This means I design cloud systems that are truly optimized for the underlying hardware — reducing latency and cost in ways a purely cloud-native engineer wouldn't think to look for."
+> "My biggest strength is bridging hardware constraints with cloud‑scale architecture. 
+For example, at E2 Nova I optimized database performance by designing a ProxySQL connection‑pooling layer, reducing 6,000+ daily timeouts without changing any application code."
 
 **Backup bullets:**
 - Not just theory: 479 CloudFormation templates, 155 Jenkins pipelines, 49 ASGs — inherited and evolved
@@ -63,7 +65,8 @@
 ## Q5. Biggest weakness (弱點)
 
 **Script:**
-> "My biggest weakness right now is German fluency. My last five years were in global English-speaking environments. Because my family is relocating permanently, I'm taking daily classes and targeting B1 within 18 months of starting a role."
+> "My biggest weakness is German fluency. 
+My recent roles were in English‑speaking environments, but I'm taking daily lessons and targeting B1 within 12–18 months."
 
 ⚠️ **Do not apologize. State it matter-of-factly and pivot to the commitment.**
 
@@ -82,7 +85,9 @@
 ## Q7. Tell me about a conflict / difficult coworker (衝突處理)
 
 **Script:**
-> "I first make sure we both step back to cool down — technical arguments get worse when they become personal. Then I shift the conversation to the specific technical constraints: what are the actual bottlenecks, what are the tradeoffs? Once we're aligned on the constraints, the solution usually becomes obvious. I always keep communication objective and document the outcome so there's no ambiguity later."
+> "When conflict happens, I first de‑escalate and make sure emotions don’t drive the discussion. 
+Then I bring the conversation back to objective technical facts—constraints, tradeoffs, and data. 
+This usually leads to alignment quickly."
 
 ---
 
@@ -96,21 +101,24 @@
 ## Q9. What kind of environment do you work best in? (偏好工作環境)
 
 **Script:**
-> "I thrive in high-discipline, structured environments. When managing complex systems, rigorous documentation, strict CI/CD pipelines, and thorough peer review aren't overhead — they're what makes everything else possible. I'm also comfortable being the person who sets that standard if it doesn't exist yet."
+> "I work best in a structured environment with clear processes, documentation, and CI/CD practices. 
+For complex systems, discipline is what keeps everything stable and scalable."
 
 ---
 
 ## Q10. Where do you see yourself in 5 years? (五年後)
 
 **Script:**
-> "In five years I see myself as a Technical Principal, having built a fully automated, carrier-grade infrastructure that's become a competitive advantage for the company. My goal is to bridge hardware engineering and cloud services — and to have grown the team around me so that knowledge is shared, not siloed."
+> "In five years, I see myself as a senior technical contributor leading cloud modernization and automation initiatives. 
+My goal is to build reliable, scalable infrastructure and help the team adopt best practices."
 
 ---
 
 ## Q11. What can we expect from you? (錄用後能期待什麼)
 
 **Script:**
-> "You can expect me to master your existing systems quickly — I have a track record of inheriting complex platforms and becoming the go-to person. From there I'll systematically improve automation, reduce manual operations, and improve observability. I won't introduce changes for the sake of it; every improvement will be tied to a production problem."
+> "You can expect me to learn your systems quickly and start improving automation, reliability, and observability. 
+I focus on solving real production problems and reducing operational overhead."
 
 ---
 
