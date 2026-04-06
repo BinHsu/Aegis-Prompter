@@ -71,3 +71,25 @@ def test_buffer_session_logging(tmp_path):
     buffer.set_advice("Strategic Tip", is_thinking=False)
     content = expected_file.read_text(encoding="utf-8")
     assert "Strategic Tip" in content
+
+def test_buffer_concurrency():
+    """驗證多執行緒寫入的並發安全性 (Concurrency Safety)"""
+    import threading
+    buffer = DialogueBuffer(max_history=100)
+    
+    def worker(role, count):
+        for i in range(count):
+            buffer.add_entry(role, f"Message {i}")
+            
+    threads = []
+    # 啟動 5 個執行緒，每個執行緒塞入 20 條訊息
+    for i in range(5):
+        t = threading.Thread(target=worker, args=(f"Thread-{i}", 20))
+        threads.append(t)
+        t.start()
+        
+    for t in threads:
+        t.join()
+        
+    # 因為有加 Lock，不應該出現 race condition，總量應正好是 100
+    assert len(buffer.dialogue) == 100

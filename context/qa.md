@@ -152,6 +152,15 @@
 
 ---
 
+## Q16. What would your former colleagues and manager say about you? (前同事與主管眼中的你)
+
+**Script:**
+> "They'd say I'm the person who makes complex things understandable, and who refuses to stop at the quick fix. I document everything, I dig into root causes, and I push for solutions that make the problem impossible to repeat. My former manager would probably say I'm reliable — not necessarily the fastest firefighter in the room, but the person who makes sure the fire never happens again. My colleagues would likely add that I have high standards for documentation and process, because I believe knowledge trapped in one person's head is a liability. If you want someone to patch things quickly and move on, I'm not your best choice. If you want someone to build a system where patching becomes unnecessary — that's where I operate."
+
+⚠️ **The last two sentences are the key.** They reframe the "not a firefighter" as a deliberate choice, not a gap. Own it.
+
+---
+
 ## Quick Reference — Key Numbers
 
 | Metric | Value |
