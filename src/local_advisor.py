@@ -80,8 +80,10 @@ class LocalAdvisor:
         
         THRESHOLD = 0.65  # 0.65 to 0.75 is typical for semantic matching in MTEB spaces
         
+        # Log the score unconditionally for observability during tuning
+        logger.info(f"[LocalAdvisor] RAG Similarity {best_score:.2f} (Threshold: {THRESHOLD}) calculated in {elapsed_ms:.1f}ms for: '{dialogue_chunk}'")
+        
         if best_score >= THRESHOLD:
-            logger.debug(f"[LocalAdvisor] RAG Similarity {best_score:.2f} calculated in {elapsed_ms:.1f}ms")
             if best_match_idx != self.last_matched_idx:
                 self.last_matched_idx = best_match_idx
                 return self.knowledge_texts[best_match_idx]
