@@ -20,7 +20,6 @@ env/
 
 # Secrets & Environment Variables
 .env
-.env.*
 
 # Python Cache
 .pip_cache/
