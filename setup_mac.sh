@@ -1,71 +1,71 @@
 #!/bin/bash
 
-# Staff Officer - Cross-Mac Deployment Script
-# 讓專案不污染主機，跨機隨插即用
+# Aegis Prompter - Cross-Mac Deployment Script
+# Ensures an isolated environment that doesn't pollute the host macOS.
 
 set -e
 
-echo "🚀 [Staff Officer] 開始全自動跨機環境部署..."
+echo "🚀 [Aegis Prompter] Starting automated Mac environment deployment..."
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_DIR"
 
-echo "檢查 Homebrew..."
+echo "Checking Homebrew..."
 if ! command -v brew &> /dev/null; then
-    echo "❌ 尚未安裝 Homebrew。請先安裝 Homebrew 後再試。"
+    echo "❌ Homebrew is not installed. Please install Homebrew first and try again."
     exit 1
 fi
 
-echo "檢查並安裝系統依賴 (portaudio)..."
+echo "Checking and installing system dependencies (portaudio)..."
 brew list portaudio &> /dev/null || brew install portaudio
 
-echo "檢查 BlackHole 系統音訊驅動..."
+echo "Checking BlackHole virtual audio driver..."
 if ! ls -d /Library/Audio/Plug-Ins/HAL/BlackHole*.driver >/dev/null 2>&1; then
-    echo "⚠️ 尚未偵測到 BlackHole 音效卡驅動檔案 (或安裝不完整)。準備修復..."
-    echo "👉 [即將求密碼] 以下需要系統權限以寫入底層驅動，請輸入 Mac 登入密碼："
+    echo "⚠️ BlackHole audio driver not detected (or incomplete). Preparing to install..."
+    echo "👉 [Password Required] The following requires system privileges to write the driver. Please enter your Mac login password:"
     brew reinstall --cask blackhole-2ch
-    echo "🔄 重啟 Mac 音訊核心服務 (coreaudiod) 以即時載入新驅動..."
+    echo "🔄 Restarting Mac core audio service (coreaudiod) to load the new driver..."
     sudo killall coreaudiod
 else
-    echo "✅ BlackHole 系統音效驅動已妥善安裝。"
+    echo "✅ BlackHole virtual audio driver is securely installed."
 fi
 
-echo "檢查 Python 3..."
+echo "Checking Python 3..."
 if ! command -v python3 &> /dev/null; then
-    echo "❌ 尚未安裝 Python 3。"
+    echo "❌ Python 3 is not installed."
     exit 1
 fi
 
-echo "檢查虛擬環境 (.venv) 狀態..."
+echo "Checking virtual environment (.venv) state..."
 if [ -d ".venv" ]; then
-    # 測試 .venv 內的 python 是否在當前 Mac 上可正常運作（跨機可能導致路徑無效）
+    # Test if the existing python inside .venv works on this specific Mac
     if .venv/bin/python -c "import sys" >/dev/null 2>&1; then
-        echo "✅ 既有的 .venv 虛擬環境與當前 Mac 相容，保留使用。"
+        echo "✅ Existing .venv is compatible with the current Mac. Retaining."
     else
-        echo "⚠️ 既有 .venv 已失效 (可能因切換 Mac 導致 Python 絕對路徑變更)，正在重新建立..."
+        echo "⚠️ Existing .venv is broken (likely due to Mac path changes). Rebuilding..."
         rm -rf .venv
         python3 -m venv .venv
     fi
 else
-    echo "建立全新隔離虛擬環境 (.venv)..."
+    echo "Creating a fresh isolated virtual environment (.venv)..."
     python3 -m venv .venv
 fi
 
 source .venv/bin/activate
 
-echo "確保快取目錄存在 (模型 & 套件)..."
+echo "Ensuring cache directories exist (for models & packages)..."
 mkdir -p .hf_cache
 mkdir -p .pip_cache
 
-echo "載入環境變數設定..."
+echo "Loading environment variables..."
 export HF_HOME="$PROJECT_DIR/.hf_cache"
 export PIP_CACHE_DIR="$PROJECT_DIR/.pip_cache"
 
-echo "升級 pip 並安裝專案套件..."
+echo "Upgrading pip and installing project dependencies..."
 python3 -m pip install --upgrade pip
 pip install -r requirements.txt
 
 echo "=========================================="
-echo "✅ [Staff Officer] 部署完成！"
-echo "👉 環境準備就緒。若要開發，請輸入 'source .venv/bin/activate' 啟動環境。"
-echo "👉 主機不留痕跡，幾 GB 模型權重都會存放在 T7 硬碟的快取內！"
+echo "✅ [Aegis Prompter] Deployment Complete!"
+echo "👉 Environment is ready. To begin, type 'source .venv/bin/activate' in this terminal."
+echo "👉 Host OS remains clean. GBs of ML weights are safely cached within the project folder."
 echo "=========================================="
