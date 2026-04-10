@@ -112,8 +112,10 @@ Aegis-Prompter/
    ```zsh
    streamlit run src/app.py
    ```
+   *Upon startup, your terminal will print a secure 4-digit `STAFF OFFICER ACCESS CODE`. Keep this handy!*
+   
    **🎙️ Usage Scenario (How to deploy in battle):**
-   * **The Boss/Speaker**: Connects to the local server IP via their mobile phone or iPad, selects `Speaker Mode`, and confidently takes it to the podium.
+   * **The Boss/Speaker**: Connects to the local server IP via their mobile phone or iPad, enters the dynamically generated **4-digit PIN** provided by the staff to authenticate, selects `Speaker Mode`, and confidently takes it to the podium.
    * **The Staff Officer**: Operates the main MacBook off-stage. They select `Staff Mode` to monitor the live transcript and push manual tactical cues to the Boss's screen.
 
 ---
