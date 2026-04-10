@@ -112,8 +112,9 @@ Aegis-Prompter/
    ```zsh
    streamlit run src/app.py
    ```
-   * Choose `Speaker Mode` on the presentation laptop.
-   * Connect to the local server IP on your iPad/Staff laptop and choose `Staff Mode`.
+   **🎙️ Usage Scenario (How to deploy in battle):**
+   * **The Boss/Speaker**: Connects to the local server IP via their mobile phone or iPad, selects `Speaker Mode`, and confidently takes it to the podium.
+   * **The Staff Officer**: Operates the main MacBook off-stage. They select `Staff Mode` to monitor the live transcript and push manual tactical cues to the Boss's screen.
 
 ---
 
