@@ -6,23 +6,24 @@ import threading
 import mlx_whisper
 import datetime
 
-# 加入全域的 NPU 推論鎖，防止雙麥克風同時講話時，兩個跑在背景的 Thread 同時搶用 MLX 資源，導致 Apple Metal 底層崩潰 (Segmentation fault)
+# Global NPU inference lock to prevent background threads from crashing Apple Metal
+# when dual microphones capture voice streams simultaneously.
 NPU_LOCK = threading.Lock()
 
 class Transcriber:
     @staticmethod
     def find_device_index(keywords, fallback_to_default=True):
-        """自動偵測音訊設備編號：根據關鍵字順序進行匹配"""
+        """Auto-detects the hardware audio device index based on keywords."""
         import sounddevice as sd
         devices = sd.query_devices()
         
-        # 1. 精確權重匹配
+        # 1. Exact priority match
         for kw in keywords:
             for i, dev in enumerate(devices):
                 if kw.lower() in dev['name'].lower() and dev['max_input_channels'] > 0:
                     return i, dev['name']
         
-        # 2. 備案：如果都沒找到，且 fallback 為真，則使用系統預設輸入
+        # 2. Fallback to system default input if allowed
         if fallback_to_default:
             default_input = sd.default.device[0]
             if default_input >= 0:
@@ -37,87 +38,80 @@ class Transcriber:
         self.buffer = buffer_instance
         self.model_path = model_path
         
-        # WebRTCVAD 要求 16000 採樣率，且一次 block 為 10, 20 或 30毫秒
+        # WebRTCVAD requires 16000Hz, blocks must be 10, 20, or 30ms
         self.sample_rate = 16000
         self.block_size = int(self.sample_rate * 0.03) # 480 frames = 30ms
 
-        # 初始化神經網路人聲過濾器: 0-3，3 為最嚴格，用來過濾打字聲與工程聲音
+        # Neural Voice Filter: 0-3 severity. 3 is strictest (filters out typing/ambient noise).
         self.vad = webrtcvad.Vad(3)
         self.audio_queue = queue.Queue()
         self.is_running = False
-        self.last_rms = 0.0 # 用於 UI 顯示的音量強弱
+        self.last_rms = 0.0 # UI volume indicator
         
-        # 關鍵修正：預載模型時必須加鎖，防止兩個 Thread 同時搶用 NPU 導致死鎖
+        # Pre-load the MLX model safely into the NPU
         with NPU_LOCK:
-            print(f"[{self.role}] 預載 Whisper 模型... (這可能需要幾秒鐘，依賴外接硬碟讀寫)")
-            # 此處會載入模型到 NPU (mlx-whisper 特定行為)
-            # 使用 Dummy 固定資料長度來觸發 NPU 權限與模型載入建置
+            print(f"[{self.role}] Preloading Whisper model into NPU...")
+            # Trigger NPU memory allocation using a dummy float array
             mlx_whisper.transcribe(np.zeros(16000, dtype=np.float32), path_or_hf_repo=self.model_path)
         
-        print(f"[{self.role}] NPU 模型預載完畢！隨時可以錄音。")
+        print(f"[{self.role}] NPU Preloading complete. Ready to transcribe.")
         
     def _audio_callback(self, indata, frames, time_info, status):
-        """核心錄音回呼函數：此處只做超輕量的 VAD 判定，不可阻塞"""
+        """High-speed non-blocking audio stream callback."""
         if not self.is_running:
             return
             
-        # 轉換為 WebRTCVAD 需要的 16-bit PCM Mono
+        # Convert to WebRTCVAD 16-bit PCM Mono
         audio_int16 = (indata[:, 0] * 32767).astype(np.int16)
         
-        # 計算即時音量 (RMS) 供給 UI 顯示
-        # 為了平滑顯示，稍微加強一點動態感
+        # Calculate RMS for UI visualizer
         rms = np.sqrt(np.mean(indata**2))
         self.last_rms = float(rms)
         
         try:
-            # 判斷這 30 毫秒內有沒有人類聲音的頻率
+            # Check for human frequencies
             is_speech = self.vad.is_speech(audio_int16.tobytes(), self.sample_rate)
         except Exception:
             is_speech = False
             
-        # 將判斷結果與聲音片段排入隊列，交給背後的轉譯 Thread 處理
         self.audio_queue.put((audio_int16, is_speech))
 
     def get_rms(self):
-        """獲取最近一次的音量強度 (0.0 ~ 1.0)"""
+        """Retrieves latest audio strength (0.0 ~ 1.0)"""
         return self.last_rms
 
     def _processing_thread(self):
-        """背景工作線程：收集 VAD 篩選過的句子片段，並送給 Whisper 解析"""
+        """Background worker: groups VAD speech frames and delegates to Whisper NPU."""
         speech_buffer = []
         silence_frames = 0
         
-        # 設定「平衡性斷句門檻」：連遇 0.4 秒無人聲，就認定一句話講完 (確保準確度穩定)
+        # Balance threshold: Flush to whisper if 0.4 seconds of total silence is met
         silence_flush_limit = int(0.4 / 0.03) 
         
         while self.is_running:
             try:
-                # 配合 timeout，避免 stop() 被這行卡死
                 chunk, is_speech = self.audio_queue.get(timeout=0.1)
                 
                 if is_speech:
                     speech_buffer.append(chunk)
-                    silence_frames = 0 # 遇人聲，歸零沉默計數器
+                    silence_frames = 0
                 else:
                     silence_frames += 1
                     
-                # 條件：有一段話存在 buffer，而且我們遇到了明顯的停頓點 (silence_frames 達標)
                 if silence_frames >= silence_flush_limit and len(speech_buffer) > 0:
                     
-                    # 將整段收集的 int16 陣列合體，轉成正規的 float32 給 Whisper
+                    # Pack 16-bit frames and convert to float32 for Whisper
                     audio_data = np.concatenate(speech_buffer)
                     audio_float32 = audio_data.astype(np.float32) / 32767.0
                     
-                    # 重置變數以迎接下一句話
                     speech_buffer = []
                     silence_frames = 0
                     
-                    # 太短的聲音大概只是咳嗽或單一雜音敲擊，直接拋棄
+                    # Discard extremely short mechanical noises (< 0.3s)
                     if len(audio_float32) < self.sample_rate * 0.3:
                         continue
                         
-                    # ======== 核心：透過 Apple M4 NPU 進行光速轉譯 ========
-                    # 註：mlx-whisper 目前僅支援 Greedy Decoding，不需指定 beam_size
+                    # ======== Core Apple M4 NPU execution ========
                     with NPU_LOCK:
                         result = mlx_whisper.transcribe(
                             audio_float32, 
@@ -130,7 +124,7 @@ class Transcriber:
                     text = result.get("text", "").strip()
                     
                     if text and len(text) > 1:
-                        # [防幻覺機制]: 如果 Whisper 無中生有生出這些雜訊，濾掉
+                        # Anti-Hallucination mechanism (common Whisper ghosts)
                         hallucinations = ["字幕", "Subtitles", "Amara.org", "Thank you.", "謝謝", "請訂閱"]
                         if not any(h in text for h in hallucinations):
                             timestamp = datetime.datetime.now().strftime("%H:%M:%S")
@@ -141,7 +135,7 @@ class Transcriber:
                 continue
 
     def start(self):
-        """啟動聲音擷取與轉譯執行緒"""
+        """Ignites the audio worker thread and microphone stream."""
         self.is_running = True
         self.thread = threading.Thread(target=self._processing_thread, daemon=True)
         self.thread.start()
@@ -157,7 +151,7 @@ class Transcriber:
         self.stream.start()
 
     def stop(self):
-        """安全終止所有串流與背景執行緒"""
+        """Safely tears down the pipeline."""
         self.is_running = False
         if hasattr(self, 'stream'):
             self.stream.stop()

@@ -24,6 +24,19 @@ env/
 
 # Python Cache
 .pip_cache/
+.pytest_cache/
 
 # Meeting History
 history/
+
+# context
+context/
+
+# Ignore generated documentation HTML files
+architecture_review.html
+*.html
+
+# AI Artifacts
+walkthrough.md
+task.md
+implementation_plan.md
