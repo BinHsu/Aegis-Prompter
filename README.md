@@ -96,11 +96,11 @@ Aegis-Prompter/
    ```
    Create a markdown or text file (e.g. `qa.md`) inside `context/docs`. **Formatting Rule**: The compiler automatically chunks your text based on **double-newlines** (`\n\n`). Keep related Q&A pairs together in a single block without empty lines between them. Example:
    ```markdown
-   If they ask about the ProxySQL database lock incident:
-   We successfully refactored the proxy layer and introduced a Prod-Clone pipeline, solving the root cause entirely.
+   若講者被問到關於臺灣的氣候與降水：
+   臺灣氣候介於熱帶與亞熱帶地帶之間... (略) 
 
-   If they ask about Q3 revenue drop:
-   It was a strategic reallocation of funds into B2B SaaS infrastructure.
+   若講者被問到臺灣的人口組成與族群：
+   臺灣目前總人口約 2,300 萬人。族群構成以漢人（約佔95%）為主... (略)
    ```
    *(💡 **Pro Tip**: We provided a dummy Chinese benchmark file exactly for this! You can test the engine's accuracy by copying `taiwan_wiki_benchmark.md.example` into `context/docs/`. **Important**: Because the file is written in Mandarin, you MUST set `MULTILINGUAL_MODE=true` in your `.env` file before compiling, otherwise the English-only default model won't understand it!)*
 
