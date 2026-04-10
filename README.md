@@ -153,6 +153,12 @@ The core components (Streamlit, Vector DB RAG) are fully cross-platform. We high
 - Replace `mlx-whisper` with `faster-whisper` (for Nvidia CUDA/CPU support).
 - Replace `BlackHole` device targeting with `VB-Audio Virtual Cable` or `Stereo Mix`.
 
+**🐳 Why Not Dockerized?**
+You might wonder why we rely on `setup_mac.sh` and a Python `.venv` instead of providing a slick `docker-compose.yml`. This is an intentional architectural bottleneck of macOS:
+1. **Apple Silicon Passthrough**: Docker Desktop for Mac runs via a lightweight Linux hypervisor. Currently, macOS does not support passing physical GPU/NPU (Metal API) hardware directly into a Linux container. If we dockerized this, `mlx-whisper` would fallback to software CPU emulation, destroying our zero-latency promise.
+2. **CoreAudio Isolation**: Seamlessly mounting physical microphones and the `BlackHole 2ch` virtual loopback interface into an Alpine container without devastating latency issues and audio dropouts is practically impossible on macOS.
+*If you port this to Linux where Nvidia Docker (CUDA) and PulseAudio passthrough are fully supported, we highly encourage you to Dockerize it!*
+
 Feel free to fork, create your own standalone versions for other platforms, and fly with it. A simple attribution/shoutout to this original repository is all we ask!
 
 ---
