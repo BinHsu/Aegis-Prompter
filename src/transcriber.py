@@ -5,6 +5,10 @@ import queue
 import threading
 import mlx_whisper
 import datetime
+import logging
+import time
+
+logger = logging.getLogger("Transcriber")
 
 # Global NPU inference lock to prevent background threads from crashing Apple Metal
 # when dual microphones capture voice streams simultaneously.
@@ -44,17 +48,17 @@ class Transcriber:
 
         # Neural Voice Filter: 0-3 severity. 3 is strictest (filters out typing/ambient noise).
         self.vad = webrtcvad.Vad(3)
-        self.audio_queue = queue.Queue()
+        self.audio_queue = queue.Queue(maxsize=300) # Prevents memory exhaustion if NPU stalls
         self.is_running = False
         self.last_rms = 0.0 # UI volume indicator
         
         # Pre-load the MLX model safely into the NPU
         with NPU_LOCK:
-            print(f"[{self.role}] Preloading Whisper model into NPU...")
+            logger.info(f"[{self.role}] Preloading Whisper model into NPU...")
             # Trigger NPU memory allocation using a dummy float array
             mlx_whisper.transcribe(np.zeros(16000, dtype=np.float32), path_or_hf_repo=self.model_path)
         
-        print(f"[{self.role}] NPU Preloading complete. Ready to transcribe.")
+        logger.info(f"[{self.role}] NPU Preloading complete. Ready to transcribe.")
         
     def _audio_callback(self, indata, frames, time_info, status):
         """High-speed non-blocking audio stream callback."""
@@ -74,7 +78,11 @@ class Transcriber:
         except Exception:
             is_speech = False
             
-        self.audio_queue.put((audio_int16, is_speech))
+        try:
+            self.audio_queue.put_nowait((audio_int16, is_speech))
+        except queue.Full:
+            # Emergency drop frame to avoid deadlocks
+            logger.warning(f"[{self.role}] Audio queue full! Dropping frame. NPU overloaded?")
 
     def get_rms(self):
         """Retrieves latest audio strength (0.0 ~ 1.0)"""
@@ -90,7 +98,10 @@ class Transcriber:
         
         while self.is_running:
             try:
-                chunk, is_speech = self.audio_queue.get(timeout=0.1)
+                try:
+                    chunk, is_speech = self.audio_queue.get(timeout=0.1)
+                except queue.Empty:
+                    continue
                 
                 if is_speech:
                     speech_buffer.append(chunk)
@@ -112,6 +123,7 @@ class Transcriber:
                         continue
                         
                     # ======== Core Apple M4 NPU execution ========
+                    start_time = time.time()
                     with NPU_LOCK:
                         result = mlx_whisper.transcribe(
                             audio_float32, 
@@ -120,6 +132,7 @@ class Transcriber:
                             no_speech_threshold=0.6,
                             condition_on_previous_text=False
                         )
+                    elapsed_ms = (time.time() - start_time) * 1000
                     
                     text = result.get("text", "").strip()
                     
@@ -127,12 +140,16 @@ class Transcriber:
                         # Anti-Hallucination mechanism (common Whisper ghosts)
                         hallucinations = ["字幕", "Subtitles", "Amara.org", "Thank you.", "謝謝", "請訂閱"]
                         if not any(h in text for h in hallucinations):
-                            timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-                            print(f"[{timestamp}] 💬 [{self.role}]: {text}", flush=True)
+                            # Append latency to log
+                            logger.info(f"[{self.role}] Transcribed in {elapsed_ms:.0f}ms: {text}")
                             self.buffer.add_entry(self.role, text)
 
-            except queue.Empty:
-                continue
+            except Exception as e:
+                logger.error(f"[{self.role}] Exception in transcription loop: {e}. Recovering in 2s...")
+                time.sleep(2)
+                # Flush the queue to prevent analyzing old stale data on recovery
+                speech_buffer = []
+                silence_frames = 0
 
     def start(self):
         """Ignites the audio worker thread and microphone stream."""

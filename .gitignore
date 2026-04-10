@@ -26,8 +26,9 @@ env/
 .pip_cache/
 .pytest_cache/
 
-# Meeting History
+# Meeting History & Logs
 history/
+logs/
 
 # context
 context/

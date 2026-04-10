@@ -2,6 +2,10 @@ import os
 import pickle
 import numpy as np
 from sentence_transformers import SentenceTransformer
+import logging
+import time
+
+logger = logging.getLogger("LocalAdvisor")
 
 class LocalAdvisor:
     """
@@ -24,7 +28,7 @@ class LocalAdvisor:
     def load_index(self):
         """Loads the compiled knowledge array and its corresponding model."""
         if not os.path.exists(self.index_path):
-            print(f"⚠️ [LocalAdvisor] Knowledge index not found at {self.index_path}. Please run `build_index.py` first.")
+            logger.warning(f"⚠️ [LocalAdvisor] Knowledge index not found at {self.index_path}. Please run `build_index.py` first.")
             return
 
         try:
@@ -35,11 +39,11 @@ class LocalAdvisor:
             self.knowledge_embeddings = bundle["embeddings"]
             model_name = bundle["model_name"]
             
-            print(f"📦 [LocalAdvisor] Loading local embedding model: {model_name}...")
+            logger.info(f"📦 [LocalAdvisor] Loading local embedding model: {model_name}...")
             self.model = SentenceTransformer(model_name)
-            print(f"✅ [LocalAdvisor] Ready! Loaded {len(self.knowledge_texts)} chunks into memory.")
+            logger.info(f"✅ [LocalAdvisor] Ready! Loaded {len(self.knowledge_texts)} chunks into memory.")
         except Exception as e:
-            print(f"❌ [LocalAdvisor] Failed to load index: {e}")
+            logger.error(f"❌ [LocalAdvisor] Failed to load index: {e}")
 
     def analyze_dialogue(self, dialogue_chunk):
         """
@@ -54,6 +58,7 @@ class LocalAdvisor:
             return None
 
         # Generate embedding for the incoming sentence
+        start_time = time.time()
         query_vec = self.model.encode([dialogue_chunk], convert_to_numpy=True)[0]
         
         # Calculate Cosine Similarity across the entire database instantly
@@ -71,9 +76,12 @@ class LocalAdvisor:
         best_match_idx = np.argmax(similarities)
         best_score = similarities[best_match_idx]
         
+        elapsed_ms = (time.time() - start_time) * 1000
+        
         THRESHOLD = 0.65  # 0.65 to 0.75 is typical for semantic matching in MTEB spaces
         
         if best_score >= THRESHOLD:
+            logger.debug(f"[LocalAdvisor] RAG Similarity {best_score:.2f} calculated in {elapsed_ms:.1f}ms")
             if best_match_idx != self.last_matched_idx:
                 self.last_matched_idx = best_match_idx
                 return self.knowledge_texts[best_match_idx]

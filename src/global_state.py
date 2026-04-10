@@ -1,8 +1,29 @@
 import threading
 import time
+import logging
+import os
 from dialogue_buffer import DialogueBuffer
 from local_advisor import LocalAdvisor
 from transcriber import Transcriber
+
+# ===== Configure Global Logging =====
+base_dir = os.path.dirname(os.path.dirname(__file__))
+log_dir = os.path.join(base_dir, "logs")
+os.makedirs(log_dir, exist_ok=True)
+
+# Generate a unique timestamped log file per startup segment
+startup_timestamp = time.strftime("%Y-%m-%d_%H%M%S")
+log_filename = f"aegis_engine_{startup_timestamp}.log"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(os.path.join(log_dir, log_filename), mode='a')
+    ]
+)
+logger = logging.getLogger("GlobalState")
 
 class GlobalState:
     """
@@ -31,7 +52,7 @@ class GlobalState:
         self.enable_rag = os.environ.get("ENABLE_LOCAL_RAG", "true").lower() == "true"
         self.advisor = LocalAdvisor() if self.enable_rag else None
         if not self.enable_rag:
-            print("🛑 [Config] Local RAG Disabled. Running in Pure Transcription Mode.", flush=True)
+            logger.warning("🛑 [Config] Local RAG Disabled. Running in Pure Transcription Mode.")
         
         self.is_running = False
         self.transcriber_me = None
@@ -118,7 +139,7 @@ class GlobalState:
                         
                         if hint:
                             self.buffer.set_advice(f"🛡️ [Aegis Triggered]\n\n{hint}", is_thinking=False)
-                            print(f"\n🛡️ [Aegis Strike]:\n{hint}\n", flush=True)
+                            logger.info(f"🛡️ [Aegis Strike]:\n{hint}")
 
             # Rest briefly to save CPU cycles
             time.sleep(0.3)
