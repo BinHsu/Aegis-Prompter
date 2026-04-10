@@ -89,8 +89,20 @@ Aegis-Prompter/
    ```
    *(For Windows/Linux, manually create a venv, `pip install -r requirements.txt`, and route your audio).*
 
-2. **Compile the Knowledge Base**:
-   Throw your cheat-sheets into `context/docs` (e.g. `qa.txt`) and compile them into a vector space.
+2. **Create & Compile the Tactical RAG (Knowledge Base)**:
+   Because your personal notes are git-ignored, you must first create the docs folder:
+   ```zsh
+   mkdir -p context/docs
+   ```
+   Create a markdown or text file (e.g. `qa.md`) inside `context/docs`. **Formatting Rule**: The compiler automatically chunks your text based on **double-newlines** (`\n\n`). Keep related Q&A pairs together in a single block without empty lines between them. Example:
+   ```markdown
+   If they ask about the ProxySQL database lock incident:
+   We successfully refactored the proxy layer and introduced a Prod-Clone pipeline, solving the root cause entirely.
+
+   If they ask about Q3 revenue drop:
+   It was a strategic reallocation of funds into B2B SaaS infrastructure.
+   ```
+   Once your files are saved, compile them into a vector space:
    ```zsh
    python src/build_index.py
    ```
