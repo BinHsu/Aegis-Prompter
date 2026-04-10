@@ -102,6 +102,8 @@ Aegis-Prompter/
    If they ask about Q3 revenue drop:
    It was a strategic reallocation of funds into B2B SaaS infrastructure.
    ```
+   *(💡 **Pro Tip**: We provided a dummy benchmark file exactly for this! You can test the engine's accuracy by copying `taiwan_wiki_benchmark.md.example` into `context/docs/`.)*
+
    Once your files are saved, compile them into a vector space:
    ```zsh
    python src/build_index.py
