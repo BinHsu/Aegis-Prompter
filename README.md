@@ -112,10 +112,13 @@ Aegis-Prompter/
    ```zsh
    streamlit run src/app.py
    ```
-   *Upon startup, your terminal will print a secure 4-digit `STAFF OFFICER ACCESS CODE`. Keep this handy!*
+   **🔍 Crucial Terminal Output to Look For:**
+   When the app launches, check your terminal (console log) for two critical pieces of information:
+   - **Network URL**: Look for `Network URL: http://192.168.x.x:8501`. This is the local LAN IP address that your iPad or Mobile phone will use to connect.
+   - **STAFF OFFICER ACCESS CODE**: The system will generate a highly visible, randomized 4-digit PIN in the terminal. **You need this PIN to unlock the UI on remote devices.**
    
    **🎙️ Usage Scenario (How to deploy in battle):**
-   * **The Boss/Speaker**: Connects to the local server IP via their mobile phone or iPad, enters the dynamically generated **4-digit PIN** provided by the staff to authenticate, selects `Speaker Mode`, and confidently takes it to the podium.
+   * **The Boss/Speaker**: Connects to the `Network URL` via their iPad or mobile phone on the same Wi-Fi, enters the **4-digit PIN** provided by the terminal to authenticate, selects `Speaker Mode`, and confidently takes it to the podium.
    * **The Staff Officer**: Operates the main MacBook off-stage. They select `Staff Mode` to monitor the live transcript and push manual tactical cues to the Boss's screen.
 
 ---
