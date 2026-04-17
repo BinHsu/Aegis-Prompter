@@ -48,7 +48,8 @@ class Transcriber:
 
         # Neural Voice Filter: 0-3 severity. 3 is strictest (filters out typing/ambient noise).
         self.vad = webrtcvad.Vad(3)
-        self.audio_queue = queue.Queue(maxsize=300) # Prevents memory exhaustion if NPU stalls
+        self.audio_queue = queue.Queue(maxsize=3000) # Increased to 90 seconds buffer
+        self.inference_queue = queue.Queue() # New queue for async NPU offloading
         self.is_running = False
         self.last_rms = 0.0 # UI volume indicator
         
@@ -109,7 +110,10 @@ class Transcriber:
                 else:
                     silence_frames += 1
                     
-                if silence_frames >= silence_flush_limit and len(speech_buffer) > 0:
+                # Maximum length limit for a single recording segment (e.g. 15 seconds) to ensure frequent inference
+                max_speech_chunks = int(15.0 / 0.03) # 15 seconds
+                
+                if (silence_frames >= silence_flush_limit or len(speech_buffer) >= max_speech_chunks) and len(speech_buffer) > 0:
                     
                     # Pack 16-bit frames and convert to float32 for Whisper
                     audio_data = np.concatenate(speech_buffer)
@@ -122,40 +126,57 @@ class Transcriber:
                     if len(audio_float32) < self.sample_rate * 0.3:
                         continue
                         
-                    # ======== Core Apple M4 NPU execution ========
-                    start_time = time.time()
-                    with NPU_LOCK:
-                        result = mlx_whisper.transcribe(
-                            audio_float32, 
-                            path_or_hf_repo=self.model_path,
-                            fp16=True, 
-                            no_speech_threshold=0.6,
-                            condition_on_previous_text=False
-                        )
-                    elapsed_ms = (time.time() - start_time) * 1000
-                    
-                    text = result.get("text", "").strip()
-                    
-                    if text and len(text) > 1:
-                        # Anti-Hallucination mechanism (common Whisper ghosts)
-                        hallucinations = ["字幕", "Subtitles", "Amara.org", "Thank you.", "謝謝", "請訂閱"]
-                        if not any(h in text for h in hallucinations):
-                            # Append latency to log
-                            logger.info(f"[{self.role}] Transcribed in {elapsed_ms:.0f}ms: {text}")
-                            self.buffer.add_entry(self.role, text)
+                    # Send prepared audio chunk to the dedicated inference thread instantly
+                    self.inference_queue.put(audio_float32)
 
             except Exception as e:
-                logger.error(f"[{self.role}] Exception in transcription loop: {e}. Recovering in 2s...")
+                logger.error(f"[{self.role}] Exception in VAD looping: {e}. Recovering in 2s...")
                 time.sleep(2)
-                # Flush the queue to prevent analyzing old stale data on recovery
                 speech_buffer = []
                 silence_frames = 0
 
+    def _inference_thread(self):
+        """Dedicated background worker: Processes NPU transcription without blocking audio stream."""
+        while self.is_running:
+            try:
+                try:
+                    audio_float32 = self.inference_queue.get(timeout=0.1)
+                except queue.Empty:
+                    continue
+                
+                # ======== Core Apple M4 NPU execution ========
+                start_time = time.time()
+                with NPU_LOCK:
+                    result = mlx_whisper.transcribe(
+                        audio_float32, 
+                        path_or_hf_repo=self.model_path,
+                        fp16=True, 
+                        no_speech_threshold=0.6,
+                        condition_on_previous_text=False
+                    )
+                elapsed_ms = (time.time() - start_time) * 1000
+                
+                text = result.get("text", "").strip()
+                
+                if text and len(text) > 1:
+                    # Anti-Hallucination mechanism (common Whisper ghosts)
+                    hallucinations = ["字幕", "Subtitles", "Amara.org", "Thank you.", "謝謝", "請訂閱"]
+                    if not any(h in text for h in hallucinations):
+                        # Append latency to log
+                        logger.info(f"[{self.role}] Transcribed in {elapsed_ms:.0f}ms: {text}")
+                        self.buffer.add_entry(self.role, text)
+                        
+            except Exception as e:
+                logger.error(f"[{self.role}] Exception in inference thread: {e}")
+                time.sleep(2)
+
     def start(self):
-        """Ignites the audio worker thread and microphone stream."""
+        """Ignites the audio worker thread, inference thread, and microphone stream."""
         self.is_running = True
-        self.thread = threading.Thread(target=self._processing_thread, daemon=True)
-        self.thread.start()
+        self.thread_vad = threading.Thread(target=self._processing_thread, daemon=True)
+        self.thread_inference = threading.Thread(target=self._inference_thread, daemon=True)
+        self.thread_vad.start()
+        self.thread_inference.start()
         
         self.stream = sd.InputStream(
             device=self.device_idx,
