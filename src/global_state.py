@@ -53,6 +53,12 @@ class GlobalState:
         self.advisor = LocalAdvisor() if self.enable_rag else None
         if not self.enable_rag:
             logger.warning("🛑 [Config] Local RAG Disabled. Running in Pure Transcription Mode.")
+
+        # Whisper engine knobs (empty values fall back to sensible defaults).
+        # IMPORTANT: both mics must share one model_path — mlx caches a single model per process.
+        self.whisper_model = os.environ.get("WHISPER_MODEL", "").strip() or "mlx-community/whisper-large-v3-turbo"
+        self.whisper_language = os.environ.get("WHISPER_LANGUAGE", "").strip() or None  # None = autodetect
+        self.speaker_mode = os.environ.get("TRANSCRIBE_MODE", "window").strip() or "window"
         
         self.is_running = False
         self.transcriber_me = None
@@ -83,12 +89,21 @@ class GlobalState:
             session_id = time.strftime("%Y-%m-%d_%H%M%S")
             self.buffer.start_session(session_id)
             
-            # Ignite transcribers
-            self.transcriber_me = Transcriber(role="Speaker (You)", device_idx=me_idx, buffer_instance=self.buffer)
+            # Participant runs LocalAgreement (incremental commit) ONLY when RAG is on, so cues fire
+            # within ~2s even mid-monologue. With RAG off there is nothing to feed, so it stays in
+            # clean whole-utterance mode like the Speaker mic.
+            participant_mode = "localagreement" if self.enable_rag else "window"
+
+            # Ignite transcribers (both share whisper_model — single-slot mlx cache).
+            self.transcriber_me = Transcriber(
+                role="Speaker (You)", device_idx=me_idx, buffer_instance=self.buffer,
+                model_path=self.whisper_model, language=self.whisper_language, mode=self.speaker_mode)
             self.transcriber_me.start()
-            
+
             if other_idx is not None:
-                self.transcriber_other = Transcriber(role="Participant", device_idx=other_idx, buffer_instance=self.buffer)
+                self.transcriber_other = Transcriber(
+                    role="Participant", device_idx=other_idx, buffer_instance=self.buffer,
+                    model_path=self.whisper_model, language=self.whisper_language, mode=participant_mode)
                 self.transcriber_other.start()
             else:
                 self.transcriber_other = None
@@ -141,8 +156,8 @@ class GlobalState:
                             self.buffer.set_advice(f"🛡️ [Aegis Triggered]\n\n{hint}", is_thinking=False)
                             logger.info(f"🛡️ [Aegis Strike]:\n{hint}")
 
-            # Rest briefly to save CPU cycles
-            time.sleep(0.3)
+            # Rest briefly to save CPU cycles (0.1s keeps RAG cue latency inside the ~2s budget)
+            time.sleep(0.1)
 
 # Expose singleton getter for streamlit caching
 import streamlit as st

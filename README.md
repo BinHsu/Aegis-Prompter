@@ -29,9 +29,11 @@ We often witness two highly asymmetric, high-pressure meeting scenarios:
 * **Multi-Role Teleprompter (`?role=speaker` vs `?role=staff`)**: 
   A distracted speaker makes mistakes. The `speaker` role provides a clean, auto-scrolling teleprompter view. The `staff` role provides a tactical control panel to inject live string cues natively into the speaker's display inside the local network.
 * **Vector Semantic RAG (Zero-Latency)**: 
-  Aegis replaces clunky API calls with a local `sentence-transformers` knowledge compiler. It mathematically matches what the opponent says against your predefined `qa.md` trap questions, triggering defenses instantly without LLM generation halucinations.
+  Aegis replaces clunky API calls with a local `sentence-transformers` knowledge compiler. It mathematically matches what the opponent says against your predefined `qa.md` trap questions, triggering defenses instantly without LLM generation hallucinations.
 * **Dual-Track Apple Silicon Transcriber**: 
-  It utilizes `MLX-Whisper` directly on the Mac NPU, safely separating hardware microphones (You) and Virtual Audio loops like BlackHole (Them) without system crashes.
+  It utilizes `MLX-Whisper` directly on the Mac NPU, safely separating hardware microphones (You) and Virtual Audio loops like BlackHole (Them) without system crashes. The default model is `whisper-large-v3-turbo` — multilingual and fast on Apple Silicon, so mixed Chinese/English (code-switching) stays accurate.
+* **Sliding-Window Streaming (No Backlog)**:
+  Audio is segmented by `Silero VAD` and transcribed in coherent windows (capped at 28s), not chopped into sub-second fragments. This keeps transcription real-time — a one-hour talk finishes in roughly one hour, not with a 30-minute tail — and preserves sentence context so words are not cut at silence boundaries. The Speaker mic commits a whole utterance per pause; the Participant mic switches to incremental `LocalAgreement` commits when RAG is on, so defensive cues fire within ~2 seconds.
 * **Pure Teleprompter Mode Toggle**:
   By switching `ENABLE_LOCAL_RAG=false` in the `.env` file, the system disables all heavy vector computations and AI memory mapping. It slims down instantly into a pure, multi-role manual teleprompter to save system resources.
 * **100% Offline & Private**: Zero external API dependencies. Zero telemetry.
@@ -129,7 +131,10 @@ You can customize Aegis Prompter's behavior simply by modifying the `.env` file 
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MULTILINGUAL_MODE` | `false` | Set to `true` to load `paraphrase-multilingual-MiniLM-L12-v2`. Supports semantic matching across 50+ languages (e.g., matching Chinese cheat-sheets to English hearing questions) at the cost of ~500MB VRAM. Set to `false` for the lightning-fast, English-only model. |
+| `WHISPER_MODEL` | `mlx-community/whisper-large-v3-turbo` | The speech-to-text model. The default is multilingual and accurate on mixed zh/en. To trade accuracy for a smaller download/footprint, set `mlx-community/whisper-small-mlx`. Changing this needs a restart (mlx caches one model per process), so both mics always share it. |
+| `WHISPER_LANGUAGE` | *(empty)* | Force a transcription language (e.g. `zh`, `en`) to skip auto-detection. Leave empty for auto-detect, which is best for mixed Chinese/English speech. |
+| `TRANSCRIBE_MODE` | `window` | Speaker-mic commit style. `window` emits a whole utterance per pause (clean transcript, recommended). `localagreement` emits word-by-word with lower latency at higher compute. The Participant mic auto-uses `localagreement` whenever `ENABLE_LOCAL_RAG=true`. |
+| `MULTILINGUAL_MODE` | `false` | Set to `true` to load `paraphrase-multilingual-MiniLM-L12-v2`. Supports semantic matching across 50+ languages (e.g., matching Chinese cheat-sheets to English hearing questions) at the cost of ~500MB VRAM. Set to `false` for the lightning-fast, English-only model. (This controls the RAG embedding model only — not Whisper.) |
 | `ENABLE_LOCAL_RAG` | `true` | The "Pure Teleprompter" toggle. Set to `false` to completely disable the vector similarity engine. The system will unload the AI model from memory and function perfectly as a lightweight manual teleprompter. |
 | `HF_HOME` | `./.hf_cache` | Redirects HuggingFace vector model downloads into the project folder, preventing your host system drive from bloating. |
 | `PIP_CACHE_DIR`| `./.pip_cache` | Isolates python dependencies cache to ensure clean, cross-machine USB drive portability. |
