@@ -6,6 +6,7 @@ import queue
 import wave
 import os
 import re
+import subprocess
 import torch
 import mlx_whisper
 import logging
@@ -23,11 +24,50 @@ NPU_LOCK = threading.Lock()
 # instances must use the SAME model_path at runtime (A/B = restart, not concurrent).
 DEFAULT_MODEL = "mlx-community/whisper-large-v3-turbo"
 
+# Lighter live default for fanless Macs (MacBook Air): benchmarked on an M4 Air at ~1.5x the speed of
+# large-v3-turbo with no measurable clean-speech accuracy loss, so sustained dual-mic passes stay
+# cooler and dodge thermal throttling. Offline retranscribe.py keeps DEFAULT_MODEL for best quality.
+FANLESS_MODEL = "mlx-community/whisper-medium-mlx"
+
 # Short bilingual seed steers Whisper toward zh/en code-switching instead of flip-flopping languages.
 DEFAULT_BILINGUAL_PROMPT = "以下是一段中英文混合的對話。The following is a bilingual conversation."
 
 # Whisper ghost phrases that appear on silence/music; filtered before they reach the transcript.
 HALLUCINATIONS = ["字幕", "Subtitles", "Amara.org", "Thank you.", "謝謝", "請訂閱"]
+
+
+def _detect_model_name():
+    """macOS marketing model name (e.g. 'MacBook Air') via system_profiler. Returns '' on any failure
+    or non-macOS, which callers treat as 'assume actively cooled'."""
+    try:
+        out = subprocess.run(["system_profiler", "SPHardwareDataType"],
+                             capture_output=True, text=True, timeout=5).stdout
+        for line in out.splitlines():
+            if "Model Name" in line:
+                return line.split(":", 1)[1].strip()
+    except Exception:
+        pass
+    return ""
+
+
+def is_fanless(model_name):
+    """True for Macs with no active cooling: every MacBook Air, plus the discontinued 12-inch MacBook.
+    Pro / mini / iMac / Studio all have fans. Unknown or empty -> False (assume cooled, so we keep the
+    larger, more accurate default). Detection is by marketing name, not board id, to survive new SKUs."""
+    name = (model_name or "").strip().lower()
+    return name == "macbook" or name.startswith("macbook air")
+
+
+def resolve_default_model(env_model=None, model_name=None):
+    """Pick the live Whisper model. An explicit WHISPER_MODEL (env_model) ALWAYS wins — a hardcoded
+    override beats auto-detection. Otherwise fanless Macs get the lighter FANLESS_MODEL to avoid
+    thermal throttling on long sessions; actively-cooled or unknown machines keep DEFAULT_MODEL.
+    model_name is detected via system_profiler when not supplied (injectable for tests)."""
+    if env_model and env_model.strip():
+        return env_model.strip()
+    if model_name is None:
+        model_name = _detect_model_name()
+    return FANLESS_MODEL if is_fanless(model_name) else DEFAULT_MODEL
 
 
 class Transcriber:

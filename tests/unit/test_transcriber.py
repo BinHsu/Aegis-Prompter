@@ -14,7 +14,9 @@ SRC = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 if SRC not in sys.path:
     sys.path.insert(0, SRC)
 
-from transcriber import Transcriber          # noqa: E402
+from transcriber import (                      # noqa: E402
+    Transcriber, is_fanless, resolve_default_model, DEFAULT_MODEL, FANLESS_MODEL,
+)
 from retranscribe import should_run_batch     # noqa: E402
 
 
@@ -119,3 +121,34 @@ def test_should_run_batch(argv, expected):
 ])
 def test_wants_word_timestamps(mode, expected):
     assert Transcriber._wants_word_timestamps(mode) is expected
+
+
+# ---------- hardware -> model auto-select (2c) ----------
+
+@pytest.mark.parametrize("model_name, expected", [
+    ("MacBook Air", True),         # all Airs are fanless
+    ("macbook air", True),         # case-insensitive
+    ("MacBook", True),             # discontinued 12-inch MacBook is fanless too
+    ("MacBook Pro", False),        # actively cooled
+    ("Mac mini", False),
+    ("Mac Studio", False),
+    ("", False),                   # unknown -> assume cooled
+    (None, False),                 # missing -> assume cooled
+])
+def test_is_fanless(model_name, expected):
+    assert is_fanless(model_name) is expected
+
+
+def test_resolve_default_model_env_override_always_wins():
+    # A hardcoded WHISPER_MODEL beats auto-detection, even on a fanless machine.
+    assert resolve_default_model("custom/model", "MacBook Air") == "custom/model"
+    assert resolve_default_model("  custom/model  ", "MacBook Pro") == "custom/model"  # stripped
+
+
+def test_resolve_default_model_auto_select_by_hardware():
+    # Empty/None env -> detect: fanless gets the lighter model, cooled/unknown keeps the default.
+    assert resolve_default_model("", "MacBook Air") == FANLESS_MODEL
+    assert resolve_default_model(None, "MacBook Air") == FANLESS_MODEL
+    assert resolve_default_model("", "MacBook Pro") == DEFAULT_MODEL
+    assert resolve_default_model(None, "") == DEFAULT_MODEL          # unknown machine -> default
+    assert FANLESS_MODEL != DEFAULT_MODEL                            # guard: the two must differ

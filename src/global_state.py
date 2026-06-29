@@ -4,7 +4,7 @@ import logging
 import os
 from dialogue_buffer import DialogueBuffer
 from local_advisor import LocalAdvisor
-from transcriber import Transcriber
+from transcriber import Transcriber, resolve_default_model
 
 # ===== Configure Global Logging =====
 base_dir = os.path.dirname(os.path.dirname(__file__))
@@ -56,7 +56,8 @@ class GlobalState:
 
         # Whisper engine knobs (empty values fall back to sensible defaults).
         # IMPORTANT: both mics must share one model_path — mlx caches a single model per process.
-        self.whisper_model = os.environ.get("WHISPER_MODEL", "").strip() or "mlx-community/whisper-large-v3-turbo"
+        # WHISPER_MODEL wins if set; otherwise fanless Macs (Air) auto-select the lighter FANLESS_MODEL.
+        self.whisper_model = resolve_default_model(os.environ.get("WHISPER_MODEL"))
         self.whisper_language = os.environ.get("WHISPER_LANGUAGE", "").strip() or None  # None = autodetect
         self.speaker_mode = os.environ.get("TRANSCRIBE_MODE", "window").strip() or "window"
         
