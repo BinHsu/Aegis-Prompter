@@ -8,7 +8,7 @@ def test_buffer_initialization():
     buffer = DialogueBuffer(max_history=5)
     assert buffer.max_history == 5
     assert len(buffer.dialogue) == 0
-    assert buffer.advice == "等待對話..."
+    assert buffer.advice == "Awaiting dialogue..."
     assert buffer.is_thinking is False
 
 def test_buffer_add_entry_sliding_window():
@@ -46,7 +46,7 @@ def test_buffer_clear():
     
     buffer.clear()
     assert len(buffer.dialogue) == 0
-    assert buffer.advice == "等待對話..."
+    assert buffer.advice == "Awaiting dialogue..."
     assert buffer.is_thinking is False
 
 def test_buffer_session_logging(tmp_path):

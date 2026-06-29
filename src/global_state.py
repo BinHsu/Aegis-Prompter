@@ -88,6 +88,12 @@ class GlobalState:
             # Start new session
             session_id = time.strftime("%Y-%m-%d_%H%M%S")
             self.buffer.start_session(session_id)
+
+            # Per-session directory for durable raw-audio capture (one WAV per track). This path is
+            # lossless: the offline retranscribe.py rebuilds a complete transcript from it even if
+            # the live ring dropped audio under load.
+            recordings_dir = os.path.join(base_dir, "recordings", session_id)
+            os.makedirs(recordings_dir, exist_ok=True)
             
             # Participant runs LocalAgreement (incremental commit) ONLY when RAG is on, so cues fire
             # within ~2s even mid-monologue. With RAG off there is nothing to feed, so it stays in
@@ -97,13 +103,15 @@ class GlobalState:
             # Ignite transcribers (both share whisper_model — single-slot mlx cache).
             self.transcriber_me = Transcriber(
                 role="Speaker (You)", device_idx=me_idx, buffer_instance=self.buffer,
-                model_path=self.whisper_model, language=self.whisper_language, mode=self.speaker_mode)
+                model_path=self.whisper_model, language=self.whisper_language, mode=self.speaker_mode,
+                capture_path=os.path.join(recordings_dir, Transcriber.slug_track_name("Speaker (You)") + ".wav"))
             self.transcriber_me.start()
 
             if other_idx is not None:
                 self.transcriber_other = Transcriber(
                     role="Participant", device_idx=other_idx, buffer_instance=self.buffer,
-                    model_path=self.whisper_model, language=self.whisper_language, mode=participant_mode)
+                    model_path=self.whisper_model, language=self.whisper_language, mode=participant_mode,
+                    capture_path=os.path.join(recordings_dir, Transcriber.slug_track_name("Participant") + ".wav"))
                 self.transcriber_other.start()
             else:
                 self.transcriber_other = None

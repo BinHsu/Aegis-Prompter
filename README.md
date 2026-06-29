@@ -34,6 +34,10 @@ We often witness two highly asymmetric, high-pressure meeting scenarios:
   It utilizes `MLX-Whisper` directly on the Mac NPU, safely separating hardware microphones (You) and Virtual Audio loops like BlackHole (Them) without system crashes. The default model is `whisper-large-v3-turbo` — multilingual and fast on Apple Silicon, so mixed Chinese/English (code-switching) stays accurate.
 * **Sliding-Window Streaming (No Backlog)**:
   Audio is segmented by `Silero VAD` and transcribed in coherent windows (capped at 28s), not chopped into sub-second fragments. This keeps transcription real-time — a one-hour talk finishes in roughly one hour, not with a 30-minute tail — and preserves sentence context so words are not cut at silence boundaries. The Speaker mic commits a whole utterance per pause; the Participant mic switches to incremental `LocalAgreement` commits when RAG is on, so defensive cues fire within ~2 seconds.
+* **Durable Raw-Audio Capture (Loss-Proof Record)**:
+  Live inference runs over a lossy ring buffer that drops the oldest audio under load. In parallel, every captured block is written losslessly to one mono 16kHz/16-bit WAV per track at `recordings/<session_id>/<Track>.wav` (`Speaker.wav`, `Participant.wav`). The write happens on a dedicated thread off the audio callback, so disk I/O never stalls capture. If the live path dropped audio, the complete transcript is still recoverable offline (see Offline Transcription below).
+* **Offline / Batch Re-Transcription**:
+  `retranscribe.py` runs the same model with no realtime gate and no lossy ring, so it never drops audio. Re-transcribe a single file or merge a whole session's per-track WAVs into a speaker-labeled, time-ordered transcript.
 * **Pure Teleprompter Mode Toggle**:
   By switching `ENABLE_LOCAL_RAG=false` in the `.env` file, the system disables all heavy vector computations and AI memory mapping. It slims down instantly into a pure, multi-role manual teleprompter to save system resources.
 * **100% Offline & Private**: Zero external API dependencies. Zero telemetry.
@@ -63,12 +67,15 @@ Aegis-Prompter/
 ├── src/
 │   ├── app.py             # Multi-role UI & State Routing
 │   ├── build_index.py     # Knowledge Compiler (Parses .md to .pkl vector space)
-│   ├── transcriber.py     # Apple MLX-Whisper core
+│   ├── transcriber.py     # Apple MLX-Whisper core + durable raw-audio capture
+│   ├── retranscribe.py    # Offline engine (single file -at/-o, or session-dir merge)
 │   ├── local_advisor.py   # Vector Similarity Matcher (Cosine RAG)
 │   └── dialogue_buffer.py # Threat evaluation and Thread locking memory
 ├── context/
 │   ├── docs/              # Drop your pre-meeting files (.md, .txt) here
 │   └── knowledge_index.pkl# Compiled Vector DB (Created by build_index.py)
+├── recordings/            # Durable per-session raw audio (git-ignored)
+│   └── <session_id>/      # Speaker.wav, Participant.wav, transcript.md/.txt
 ├── .env                   # Multilingual toggle configurations
 ├── .venv/                 # Local pip virtual environment
 └── README.md              # Technical Docs
@@ -122,6 +129,38 @@ Aegis-Prompter/
    **🎙️ Usage Scenario (How to deploy in battle):**
    * **The Boss/Speaker**: Connects to the `Network URL` via their iPad or mobile phone on the same Wi-Fi, enters the **4-digit PIN** provided by the terminal to authenticate, selects `Speaker Mode`, and confidently takes it to the podium.
    * **The Staff Officer**: Operates the main MacBook off-stage. They select `Staff Mode` to monitor the live transcript and push manual tactical cues to the Boss's screen.
+
+---
+
+## 🗄️ Durable Capture & Offline Transcription
+
+The live pipeline transcribes from a lossy ring buffer to stay real-time, so audio can drop under heavy load. To guarantee a complete record, every recording session also writes raw audio losslessly to disk.
+
+**Capture layout** — one mono 16kHz/16-bit WAV per track:
+```text
+recordings/<session_id>/
+├── Speaker.wav        # your microphone
+└── Participant.wav    # the loopback (BlackHole) track
+```
+This directory is git-ignored. Because it is captured off the audio thread, it is unaffected by inference load and always holds the full audio.
+
+**Recover the complete transcript offline.** Two forms:
+
+1. **Single audio file → plain text:**
+   ```zsh
+   python3 src/app.py -at <audio> -o <out.txt>
+   ```
+   `app.py` detects the `-at` flag and routes straight to the offline engine without launching Streamlit. (`src/retranscribe.py -at <audio> -o <out.txt>` is equivalent.)
+
+2. **Whole session → merged transcript:**
+   ```zsh
+   python src/retranscribe.py recordings/<session_id>/
+   ```
+   Transcribes every per-track WAV, tags each segment with its track role, merges all tracks by start time, and writes a speaker-labeled `transcript.md` (+ `transcript.txt`) into the session directory.
+
+**Format limit (no new dependencies).** Per-channel split is supported only for 16kHz 16-bit WAV — exactly what the capture writer produces — so no `ffmpeg` work is needed for sessions. A multichannel WAV (e.g. L=Speaker, R=Participant) is split and merged into a channel-labeled transcript. Any other format is decoded to mono via `mlx-whisper` (ffmpeg) and yields a single transcript.
+
+**Hallucination filter behavior.** The ghost-phrase filter now matches the **whole normalized utterance**, not a substring. Bare Whisper artifacts like `謝謝` or `Thank you.` are still dropped, but real speech that merely contains those words — `謝謝大家`, `Okay, thank you, see you` — now survives. Latin case and trailing punctuation are ignored.
 
 ---
 

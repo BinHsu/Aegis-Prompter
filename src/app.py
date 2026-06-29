@@ -1,7 +1,12 @@
+import os, sys
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from retranscribe import should_run_batch, main as retranscribe_main
+if should_run_batch(sys.argv[1:]):
+    retranscribe_main(sys.argv[1:])
+    sys.exit(0)
+
 import streamlit as st
 import time
-import os
-import sys
 import atexit
 import threading
 import random
@@ -15,8 +20,6 @@ def mute_event_loop_closed(args):
     orig_excepthook(args)
 threading.excepthook = mute_event_loop_closed
 
-# Ensure module pathing
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from global_state import get_global_state
 
 # ===== Initialize Global State =====

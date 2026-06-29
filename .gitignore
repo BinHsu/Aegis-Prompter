@@ -29,6 +29,9 @@ env/
 history/
 logs/
 
+# Durable raw-audio capture (one WAV per track + generated transcripts)
+recordings/
+
 # context
 context/
 

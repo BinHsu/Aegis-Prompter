@@ -2,6 +2,10 @@ import numpy as np
 import sounddevice as sd
 import collections
 import threading
+import queue
+import wave
+import os
+import re
 import torch
 import mlx_whisper
 import logging
@@ -50,7 +54,7 @@ class Transcriber:
 
     def __init__(self, device_idx, role, buffer_instance, model_path=DEFAULT_MODEL,
                  language=None, mode="window", window_cap_s=28.0, min_chunk_s=1.0,
-                 pause_s=0.5, bilingual_prompt=DEFAULT_BILINGUAL_PROMPT):
+                 pause_s=0.5, bilingual_prompt=DEFAULT_BILINGUAL_PROMPT, capture_path=None):
         self.device_idx = device_idx
         self.role = role
         self.buffer = buffer_instance
@@ -58,6 +62,14 @@ class Transcriber:
         self.language = language          # None = autodetect (once per transcribe() call)
         self.mode = mode                  # "window" (whole-utterance) | "localagreement" (incremental)
         self.bilingual_prompt = bilingual_prompt or ""
+
+        # Durable raw-audio capture. None = disabled (e.g. unit tests). When set, EVERY captured
+        # block is written to this WAV via a dedicated thread, so a drop in the lossy live-inference
+        # ring is always recoverable offline (see retranscribe.py). Independent of self.ring.
+        self.capture_path = capture_path
+        self.capture_queue = queue.Queue()  # unbounded; disk (~32KB/s) outpaces 16kHz mono realtime
+        self.capture_thread = None
+        self.wav_file = None
 
         # Whisper runs a fixed 30s-shaped encoder pass; cap the buffer just under 30s so a single
         # transcribe() call never costs more than one encoder pass.
@@ -104,7 +116,14 @@ class Transcriber:
         self.last_rms = float(np.sqrt(np.mean(mono ** 2)))
 
         # Copy: sounddevice reuses indata after the callback returns.
-        self.ring.append(mono.astype(np.float32).copy())
+        block = mono.astype(np.float32).copy()
+        self.ring.append(block)
+
+        # Durable capture: hand the block to the writer thread. NEVER do file I/O here — a blocking
+        # write would stall the callback and re-introduce dropping. The queue is unbounded so this
+        # enqueue cannot block; the writer drains it off the audio thread.
+        if self.capture_path:
+            self.capture_queue.put(block)
 
     def get_rms(self):
         """Retrieves latest audio strength (0.0 ~ 1.0)"""
@@ -133,11 +152,39 @@ class Transcriber:
                 break
         return n
 
-    def _acceptable(self, text):
-        """Drop empty/one-char noise and known Whisper hallucination phrases."""
+    @staticmethod
+    def _normalize_phrase(text):
+        """Strip surrounding whitespace and trailing punctuation, lower-case Latin, for phrase
+        equality. Used only to compare a whole utterance against a known hallucination phrase."""
+        return text.strip().strip(".。!！?？,，、…").strip().lower()
+
+    @staticmethod
+    def _acceptable(text):
+        """Drop empty/one-char noise and texts that are EXACTLY a known Whisper hallucination phrase.
+
+        Boundary: the match is on the WHOLE normalized utterance, not a substring. So bare "謝謝" or
+        "Thank you." is dropped, but real speech that merely contains those words — "謝謝大家",
+        "Okay, thank you, see you" — survives. Trailing punctuation/whitespace and Latin case are
+        ignored. The len<=1 guard still discards empty/single-character noise (boundary B=1)."""
         if not text or len(text) <= 1:
             return False
-        return not any(h in text for h in HALLUCINATIONS)
+        norm = Transcriber._normalize_phrase(text)
+        return not any(norm == Transcriber._normalize_phrase(h) for h in HALLUCINATIONS)
+
+    @staticmethod
+    def _float_to_int16(samples):
+        """Convert float32 PCM in [-1.0, 1.0] to int16, clipping out-of-range values. The clip
+        boundary is +/-1.0: 1.0 -> 32767, -1.0 -> -32767, anything beyond saturates."""
+        clipped = np.clip(samples, -1.0, 1.0)
+        return (clipped * 32767.0).astype(np.int16)
+
+    @staticmethod
+    def slug_track_name(role):
+        """Turn a role label into a filesystem-safe track name. "Speaker (You)" -> "Speaker",
+        "Participant" -> "Participant". Drops parenthetical qualifiers, keeps [A-Za-z0-9_-]."""
+        base = role.split("(")[0].strip()
+        safe = re.sub(r"[^A-Za-z0-9_-]+", "_", base).strip("_")
+        return safe or "track"
 
     def _emit(self, text, elapsed_ms, kind):
         if self._acceptable(text):
@@ -166,6 +213,32 @@ class Transcriber:
         self.audio_buffer = np.zeros(0, dtype=np.float32)
         self.prev_words = []
         self.committed_count = 0
+
+    def _decode(self, buf):
+        """One Whisper encoder pass over buf. Serialized on NPU_LOCK. Returns (result, elapsed_ms)."""
+        context = (self.bilingual_prompt + " " + self.committed_text[-200:]).strip()
+        t0 = time.time()
+        with NPU_LOCK:
+            result = mlx_whisper.transcribe(
+                buf,
+                path_or_hf_repo=self.model_path,
+                word_timestamps=True,
+                language=self.language,
+                initial_prompt=context or None,
+                condition_on_previous_text=False,
+                no_speech_threshold=0.6,
+                hallucination_silence_threshold=2.0,
+                fp16=True,
+            )
+        return result, (time.time() - t0) * 1000
+
+    def _commit_result(self, result, flush, elapsed_ms):
+        """Route a decode result to the active commit strategy."""
+        if self.mode == "localagreement":
+            words = [w for seg in result.get("segments", []) for w in seg.get("words", [])]
+            self._emit_localagreement(words, flush, elapsed_ms)
+        else:
+            self._emit_window(result, elapsed_ms)
 
     # ---------- worker ----------
 
@@ -236,43 +309,84 @@ class Transcriber:
             last_decision_s = buf_dur
 
             # 4. One encoder pass over the whole (capped) buffer.
-            context = (self.bilingual_prompt + " " + self.committed_text[-200:]).strip()
-            t0 = time.time()
             try:
-                with NPU_LOCK:
-                    result = mlx_whisper.transcribe(
-                        buf,
-                        path_or_hf_repo=self.model_path,
-                        word_timestamps=True,
-                        language=self.language,
-                        initial_prompt=context or None,
-                        condition_on_previous_text=False,
-                        no_speech_threshold=0.6,
-                        hallucination_silence_threshold=2.0,
-                        fp16=True,
-                    )
+                result, elapsed_ms = self._decode(buf)
             except Exception as e:
                 logger.error(f"[{self.role}] Inference error: {e}. Recovering in 0.5s...")
                 time.sleep(0.5)
                 continue
-            elapsed_ms = (time.time() - t0) * 1000
 
             # 5. Commit.
-            if self.mode == "localagreement":
-                words = [w for seg in result.get("segments", []) for w in seg.get("words", [])]
-                self._emit_localagreement(words, flush, elapsed_ms)
-            else:
-                self._emit_window(result, elapsed_ms)
+            self._commit_result(result, flush, elapsed_ms)
 
             if flush:
                 self._reset_window()
                 last_decision_s = 0.0
 
+        # Loop exited (stop() cleared is_running). Flush the last in-flight utterance so a trailing
+        # segment with no closing pause is not abandoned.
+        self._final_flush()
+
+    def _final_flush(self):
+        """Run exactly one decode+commit over whatever audio remains after the worker loop ends.
+        Drains the ring first so the tail captured just before stop() is included. Bounded to a
+        single encoder pass, so it cannot hang shutdown indefinitely."""
+        drained = []
+        while True:
+            try:
+                drained.append(self.ring.popleft())
+            except IndexError:
+                break
+        if drained:
+            self.audio_buffer = np.concatenate([self.audio_buffer, *drained])
+
+        buf = self.audio_buffer
+        if len(buf) / self.sample_rate < self.min_chunk_s:
+            return
+        try:
+            speech = get_speech_timestamps(torch.from_numpy(buf), self.vad_model,
+                                           sampling_rate=self.sample_rate, threshold=0.5)
+        except Exception as e:
+            logger.error(f"[{self.role}] Final-flush VAD error: {e}")
+            return
+        if not speech:
+            return
+        try:
+            result, elapsed_ms = self._decode(buf)
+        except Exception as e:
+            logger.error(f"[{self.role}] Final-flush inference error: {e}")
+            return
+        logger.info(f"[{self.role}] Final flush over {len(buf) / self.sample_rate:.1f}s residual.")
+        self._commit_result(result, flush=True, elapsed_ms=elapsed_ms)
+        self._reset_window()
+
+    def _capture_writer(self):
+        """Dedicated thread: pop captured blocks and append them to the WAV. A None sentinel from
+        stop() drains the queue then exits."""
+        while True:
+            block = self.capture_queue.get()
+            if block is None:
+                break
+            try:
+                self.wav_file.writeframes(self._float_to_int16(block).tobytes())
+            except Exception as e:
+                logger.error(f"[{self.role}] Capture write error: {e}")
+
     def start(self):
-        """Ignites the stream worker and the microphone stream."""
+        """Ignites the stream worker, the capture writer, and the microphone stream."""
         self.is_running = True
         self.worker = threading.Thread(target=self._stream_worker, daemon=True)
         self.worker.start()
+
+        if self.capture_path:
+            os.makedirs(os.path.dirname(self.capture_path), exist_ok=True)
+            self.wav_file = wave.open(self.capture_path, "wb")
+            self.wav_file.setnchannels(1)
+            self.wav_file.setsampwidth(2)  # int16
+            self.wav_file.setframerate(self.sample_rate)
+            self.capture_thread = threading.Thread(target=self._capture_writer, daemon=True)
+            self.capture_thread.start()
+            logger.info(f"[{self.role}] Capturing raw audio to {self.capture_path}")
 
         self.stream = sd.InputStream(
             device=self.device_idx,
@@ -285,8 +399,26 @@ class Transcriber:
         self.stream.start()
 
     def stop(self):
-        """Safely tears down the pipeline."""
+        """Safely tears down the pipeline: stop the mic, let the worker flush the last utterance,
+        then drain and close the capture file."""
         self.is_running = False
         if hasattr(self, 'stream'):
             self.stream.stop()
             self.stream.close()
+
+        # Let the worker run its final flush. Bounded to one encoder pass; cap the wait so a wedged
+        # decode cannot hang shutdown forever (worker is a daemon thread).
+        if hasattr(self, 'worker'):
+            self.worker.join(timeout=30)
+
+        # Drain and close the capture file. Sentinel flushes every block already queued.
+        if self.capture_path:
+            self.capture_queue.put(None)
+            if self.capture_thread:
+                self.capture_thread.join(timeout=10)
+            if self.wav_file:
+                try:
+                    self.wav_file.close()
+                except Exception as e:
+                    logger.error(f"[{self.role}] Capture close error: {e}")
+                self.wav_file = None
