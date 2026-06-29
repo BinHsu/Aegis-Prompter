@@ -214,6 +214,14 @@ class Transcriber:
         self.prev_words = []
         self.committed_count = 0
 
+    @staticmethod
+    def _wants_word_timestamps(mode):
+        """Word-level timestamps are needed ONLY by LocalAgreement, which compares word prefixes
+        across consecutive hypotheses. Window mode commits the whole-utterance text and never reads
+        word tokens, so computing them there is wasted NPU work (the deferred "1a"). Any non-LA mode
+        returns False."""
+        return mode == "localagreement"
+
     def _decode(self, buf):
         """One Whisper encoder pass over buf. Serialized on NPU_LOCK. Returns (result, elapsed_ms)."""
         context = (self.bilingual_prompt + " " + self.committed_text[-200:]).strip()
@@ -222,7 +230,7 @@ class Transcriber:
             result = mlx_whisper.transcribe(
                 buf,
                 path_or_hf_repo=self.model_path,
-                word_timestamps=True,
+                word_timestamps=self._wants_word_timestamps(self.mode),
                 language=self.language,
                 initial_prompt=context or None,
                 condition_on_previous_text=False,

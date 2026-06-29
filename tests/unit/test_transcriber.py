@@ -107,3 +107,15 @@ def test_slug_track_name_all_symbol_falls_back():
 ])
 def test_should_run_batch(argv, expected):
     assert should_run_batch(argv) is expected
+
+
+# ---------- Transcriber._wants_word_timestamps (deferred "1a") ----------
+
+@pytest.mark.parametrize("mode, expected", [
+    ("localagreement", True),     # LA needs word tokens for prefix agreement
+    ("window", False),            # window commits whole-utterance text only -> skip word timestamps
+    ("", False),                  # unknown/empty mode defaults to off
+    ("LOCALAGREEMENT", False),    # exact match only; mode is not case-normalized
+])
+def test_wants_word_timestamps(mode, expected):
+    assert Transcriber._wants_word_timestamps(mode) is expected
