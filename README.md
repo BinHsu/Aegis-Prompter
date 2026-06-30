@@ -38,6 +38,8 @@ We often witness two highly asymmetric, high-pressure meeting scenarios:
   Live inference runs over a lossy ring buffer that drops the oldest audio under load. In parallel, every captured block is written losslessly to one mono 16kHz/16-bit WAV per track at `recordings/<session_id>/<Track>.wav` (`Speaker.wav`, `Participant.wav`). The write happens on a dedicated thread off the audio callback, so disk I/O never stalls capture. If the live path dropped audio, the complete transcript is still recoverable offline (see Offline Transcription below).
 * **Offline / Batch Re-Transcription**:
   `retranscribe.py` runs the same model with no realtime gate and no lossy ring, so it never drops audio. Re-transcribe a single file or merge a whole session's per-track WAVs into a speaker-labeled, time-ordered transcript.
+* **Local LLM Meeting Summary (`--summarize`)**:
+  An optional, 100% local `mlx-lm` layer turns the finished transcript into a grounded summary (TL;DR / Key Points / Decisions / Action Items) with no network calls. Stopping the live app with `Ctrl+C` auto-spawns this offline transcribe+summarize job in a detached background process, so a complete `transcript.md` + `summary.md` appear after the meeting with zero extra steps.
 * **Pure Teleprompter Mode Toggle**:
   By switching `ENABLE_LOCAL_RAG=false` in the `.env` file, the system disables all heavy vector computations and AI memory mapping. It slims down instantly into a pure, multi-role manual teleprompter to save system resources.
 * **100% Offline & Private**: Zero external API dependencies. Zero telemetry.
@@ -157,6 +159,15 @@ This directory is git-ignored. Because it is captured off the audio thread, it i
    python src/retranscribe.py recordings/<session_id>/
    ```
    Transcribes every per-track WAV, tags each segment with its track role, merges all tracks by start time, and writes a speaker-labeled `transcript.md` (+ `transcript.txt`) into the session directory.
+
+**Local LLM summary (`--summarize`).** Add `--summarize` to either form to also generate a grounded meeting summary with a small local instruct model via `mlx-lm` — the same offline, no-network posture as the transcriber:
+```zsh
+python src/retranscribe.py recordings/<session_id>/ --summarize   # -> writes summary.md
+python src/retranscribe.py -at <audio> -o <out.txt> --summarize    # -> writes <out>.summary.md
+```
+The summary has four sections — **TL;DR**, **Key Points**, **Decisions**, **Action Items** — and is constrained to use only what the transcript contains (no invented facts, names, or numbers; empty sections say "None"). The model (`mlx-community/Qwen2.5-3B-Instruct-4bit` by default) downloads on first use and is cached. A summary failure never affects the transcript — the transcript is written first and stays intact. Without `--summarize`, nothing imports `mlx-lm`, so the default transcribe path carries no extra weight.
+
+**Auto-summary on exit.** When you stop the live app with `Ctrl+C`, after the fast WAV finalize it spawns a fully detached background job that runs `retranscribe.py <session> --summarize` on the just-ended session. The shutdown returns immediately; `transcript.md` + `summary.md` land in the session directory minutes later. Disable with `AUTO_SUMMARIZE_ON_EXIT=false`. The job logs to `recordings/<session_id>/auto_summary.log`.
 
 **Format limit (no new dependencies).** Per-channel split is supported only for 16kHz 16-bit WAV — exactly what the capture writer produces — so no `ffmpeg` work is needed for sessions. A multichannel WAV (e.g. L=Speaker, R=Participant) is split and merged into a channel-labeled transcript. Any other format is decoded to mono via `mlx-whisper` (ffmpeg) and yields a single transcript.
 

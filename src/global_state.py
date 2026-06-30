@@ -64,6 +64,12 @@ class GlobalState:
         self.is_running = False
         self.transcriber_me = None
         self.transcriber_other = None
+
+        # Path of the current session's durable-capture directory. cleanup_resources() reads this
+        # to spawn the detached offline transcribe+summarize job on exit. _summary_spawned guards
+        # against a double-spawn (atexit can fire alongside an explicit stop).
+        self.recordings_dir = None
+        self._summary_spawned = False
         
         # Audio Device states
         self.me_name = "Not detected"
@@ -95,6 +101,7 @@ class GlobalState:
             # the live ring dropped audio under load.
             recordings_dir = os.path.join(base_dir, "recordings", session_id)
             os.makedirs(recordings_dir, exist_ok=True)
+            self.recordings_dir = recordings_dir
             
             # Participant runs LocalAgreement (incremental commit) ONLY when RAG is on, so cues fire
             # within ~2s even mid-monologue. With RAG off there is nothing to feed, so it stays in

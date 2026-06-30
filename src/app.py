@@ -11,6 +11,11 @@ import atexit
 import threading
 import random
 import string
+import subprocess
+
+# Import the env-flag parser only (a pure helper). summarizer's mlx-lm dependency is lazy-imported
+# inside summarize(), so this import keeps the live app free of mlx-lm.
+from summarizer import _auto_summarize_enabled
 
 # Mute the noisy "Event loop is closed" exception caused by Streamlit thread death
 orig_excepthook = threading.excepthook
@@ -20,7 +25,7 @@ def mute_event_loop_closed(args):
     orig_excepthook(args)
 threading.excepthook = mute_event_loop_closed
 
-from global_state import get_global_state
+from global_state import get_global_state, base_dir
 
 # ===== Initialize Global State =====
 g_state = get_global_state()
@@ -32,8 +37,48 @@ if not g_state.is_running:
 def cleanup_resources():
     """Teardown audio pipeline on exit. flush=False makes SIGINT/atexit fast and WAV-safe: the
     durable WAVs are finalized first, and the redundant residual Whisper decode is skipped (the
-    complete transcript is rebuilt offline by retranscribe.py)."""
+    complete transcript is rebuilt offline by retranscribe.py).
+
+    After the fast finalize, spawn a FULLY DETACHED offline job that rebuilds the complete
+    transcript and a local-LLM summary from the just-closed WAVs. It runs in its own session
+    (start_new_session=True) so it outlives this process, and we never wait on it — Ctrl+C returns
+    immediately while transcript.md + summary.md land minutes later."""
     g_state.stop_recording(flush=False)
+    _spawn_detached_summary()
+
+
+def _spawn_detached_summary():
+    """Fire-and-forget the offline transcribe+summarize pipeline on the ended session.
+
+    Guards: gated by AUTO_SUMMARIZE_ON_EXIT (default on); only when a session dir is known and
+    exists; once per process (_summary_spawned). The WAVs are already closed by the preceding
+    stop_recording(flush=False), so the child reads complete files. Failures here must never break
+    shutdown, so everything is wrapped."""
+    try:
+        if not _auto_summarize_enabled(os.environ.get("AUTO_SUMMARIZE_ON_EXIT")):
+            return
+        if getattr(g_state, "_summary_spawned", False):
+            return
+        session_dir = getattr(g_state, "recordings_dir", None)
+        if not session_dir or not os.path.isdir(session_dir):
+            return
+
+        g_state._summary_spawned = True
+        retranscribe_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "retranscribe.py")
+        log_path = os.path.join(session_dir, "auto_summary.log")
+        log_file = open(log_path, "a")
+        subprocess.Popen(
+            [sys.executable, retranscribe_path, session_dir, "--summarize"],
+            cwd=base_dir,
+            env=os.environ.copy(),
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,  # detach from this process group so it survives parent exit
+            close_fds=True,
+        )
+        print(f"Finalizing transcript + summary in background -> {os.path.join(session_dir, 'summary.md')}")
+    except Exception as e:
+        print(f"[cleanup] Detached summary spawn failed (shutdown unaffected): {e}")
 
 atexit.register(cleanup_resources)
 

@@ -125,9 +125,28 @@ def write_text(path, segments, labeled):
         f.write("\n".join(lines) + ("\n" if lines else ""))
 
 
-def run_single_file(audio_path, out_path):
+def _write_summary(transcript_text, summary_path):
+    """Summarize transcript_text with the local LLM and write it to summary_path.
+
+    summarizer (and thus mlx-lm) is imported here so the no-summary path never pulls in the
+    dependency. A summary failure is swallowed and reported: the transcript is already on disk and
+    must not be jeopardized by the optional summary step."""
+    try:
+        import summarizer  # lazy: keeps mlx-lm out of the default transcribe path
+        summary = summarizer.summarize(transcript_text)
+        with open(summary_path, "w", encoding="utf-8") as f:
+            f.write(summary.rstrip() + "\n")
+        print(f"[retranscribe] Wrote summary to {summary_path}")
+    except Exception as e:
+        # Never fail the transcript step on a summary error.
+        print(f"[retranscribe] Summary step failed (transcript is unaffected): {e}")
+
+
+def run_single_file(audio_path, out_path, summarize=False):
     """Batch mode: transcribe one audio file to a plain-text transcript. Multichannel WAV is split
-    per channel and merged time-ordered; everything else is a single track."""
+    per channel and merged time-ordered; everything else is a single track.
+
+    summarize=True additionally writes a local-LLM summary to <output_stem>.summary.md."""
     if not os.path.isfile(audio_path):
         raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
@@ -154,12 +173,22 @@ def run_single_file(audio_path, out_path):
 
     write_text(out_path, segments, labeled=labeled)
     print(f"[retranscribe] Wrote {len(segments)} segments to {out_path}")
+
+    if summarize:
+        transcript_text = "\n".join(
+            (f"{s['label']}: {s['text']}" if labeled else s["text"]) for s in segments
+        )
+        summary_path = os.path.splitext(out_path)[0] + ".summary.md"
+        _write_summary(transcript_text, summary_path)
+
     return out_path
 
 
-def run_session_dir(session_dir):
+def run_session_dir(session_dir, summarize=False):
     """Session mode: transcribe every per-track WAV and merge into a complete time-ordered,
-    speaker-labeled transcript.md (+ transcript.txt) inside the session directory."""
+    speaker-labeled transcript.md (+ transcript.txt) inside the session directory.
+
+    summarize=True additionally writes a local-LLM summary.md into the session directory."""
     session_dir = session_dir.rstrip("/")
     if not os.path.isdir(session_dir):
         raise NotADirectoryError(f"Session directory not found: {session_dir}")
@@ -190,11 +219,18 @@ def run_session_dir(session_dir):
     write_markdown(md_path, session_id, tracks, segments)
     write_text(txt_path, segments, labeled=True)
     print(f"[retranscribe] Wrote {len(segments)} merged segments to {md_path} and {txt_path}")
+
+    if summarize:
+        transcript_text = "\n".join(f"[{_fmt_ts(s['start'])}] {s['label']}: {s['text']}" for s in segments)
+        summary_path = os.path.join(session_dir, "summary.md")
+        _write_summary(transcript_text, summary_path)
+
     return md_path
 
 
-def main(argv=None):
-    argv = sys.argv[1:] if argv is None else argv
+def build_arg_parser():
+    """Build the CLI argument parser. Factored out so tests can assert flag parsing without
+    invoking main() against a real session."""
     parser = argparse.ArgumentParser(
         description="Offline re-transcribe: single audio file (-at/-o) or a session directory.")
     parser.add_argument("session_dir", nargs="?", default=None,
@@ -203,13 +239,21 @@ def main(argv=None):
                         help="single audio file to transcribe to plain text")
     parser.add_argument("-o", "--output", dest="output", default=None,
                         help="output text file for single-file mode")
+    parser.add_argument("--summarize", dest="summarize", action="store_true", default=False,
+                        help="also write a local-LLM summary (mlx-lm) next to the transcript")
+    return parser
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    parser = build_arg_parser()
     args = parser.parse_args(argv)
 
     if args.audio:
         out_path = args.output or (os.path.splitext(args.audio)[0] + ".txt")
-        run_single_file(args.audio, out_path)
+        run_single_file(args.audio, out_path, summarize=args.summarize)
     elif args.session_dir:
-        run_session_dir(args.session_dir)
+        run_session_dir(args.session_dir, summarize=args.summarize)
     else:
         parser.error("Provide either -at <audio> [-o <out>] or a session directory path.")
 

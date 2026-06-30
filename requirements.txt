@@ -1,6 +1,7 @@
 numpy
 sounddevice
 mlx-whisper
+mlx-lm
 silero-vad
 python-dotenv
 sentence-transformers
