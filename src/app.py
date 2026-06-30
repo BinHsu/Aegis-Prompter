@@ -30,8 +30,10 @@ if not g_state.is_running:
     g_state.start_recording()
 
 def cleanup_resources():
-    """Teardown audio pipeline on exit."""
-    g_state.stop_recording()
+    """Teardown audio pipeline on exit. flush=False makes SIGINT/atexit fast and WAV-safe: the
+    durable WAVs are finalized first, and the redundant residual Whisper decode is skipped (the
+    complete transcript is rebuilt offline by retranscribe.py)."""
+    g_state.stop_recording(flush=False)
 
 atexit.register(cleanup_resources)
 

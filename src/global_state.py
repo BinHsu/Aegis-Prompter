@@ -126,19 +126,22 @@ class GlobalState:
             
             return True
             
-    def stop_recording(self):
-        """Gracefully shuts down transcription engines (Thread-safe)"""
+    def stop_recording(self, flush=True):
+        """Gracefully shuts down transcription engines (Thread-safe).
+
+        flush=False (SIGINT/atexit path) finalizes the durable WAVs fast and skips the residual
+        Whisper decode, so Ctrl+C returns in seconds. flush=True keeps the live final flush."""
         with self._lock:
             if not self.is_running:
                 return False
-                
+
             self.is_running = False
-            
+
             if self.transcriber_me:
-                self.transcriber_me.stop()
+                self.transcriber_me.stop(flush=flush)
             if self.transcriber_other:
-                self.transcriber_other.stop()
-                
+                self.transcriber_other.stop(flush=flush)
+
             return True
 
     def _local_rag_worker_loop(self):

@@ -111,6 +111,12 @@ class Transcriber:
         self.capture_thread = None
         self.wav_file = None
 
+        # Gate for the worker's post-loop final flush. stop() flips this OFF on a fast/SIGINT
+        # teardown (flush=False) to skip the redundant residual Whisper decode — the durable WAV
+        # plus offline retranscribe.py already reconstruct the complete transcript. Defaults True so
+        # a worker that somehow reaches the flush before stop() keeps the original behavior.
+        self._run_final_flush = True
+
         # Whisper runs a fixed 30s-shaped encoder pass; cap the buffer just under 30s so a single
         # transcribe() call never costs more than one encoder pass.
         self.window_cap_s = window_cap_s
@@ -379,6 +385,10 @@ class Transcriber:
         """Run exactly one decode+commit over whatever audio remains after the worker loop ends.
         Drains the ring first so the tail captured just before stop() is included. Bounded to a
         single encoder pass, so it cannot hang shutdown indefinitely."""
+        # Fast/SIGINT teardown gates this OFF: skip the residual decode entirely so quit returns in
+        # seconds. The complete transcript is rebuilt offline from the durable WAV (retranscribe.py).
+        if not self._run_final_flush:
+            return
         drained = []
         while True:
             try:
@@ -446,27 +456,51 @@ class Transcriber:
         )
         self.stream.start()
 
-    def stop(self):
-        """Safely tears down the pipeline: stop the mic, let the worker flush the last utterance,
-        then drain and close the capture file."""
+    def stop(self, flush=True):
+        """Tears down the pipeline, finalizing the durable WAV FIRST and fast so Ctrl+C always
+        leaves a properly-closed header.
+
+        flush=True (default): the worker also runs one bounded residual Whisper decode before exit,
+        so a trailing utterance with no closing pause reaches the live transcript.
+        flush=False (SIGINT/atexit): skip that decode — the offline retranscribe.py rebuilds the
+        complete transcript from the WAV — so quit returns in seconds instead of waiting ~30s.
+
+        Order of operations (WAV-close-first):
+          1. clear is_running (worker loop and audio callback see it next tick)
+          2. stop + close the mic InputStream
+          3. finalize the capture WAV: sentinel -> writer-thread join -> close wav_file
+          4. gate + join the Whisper worker (short when flush=False)
+
+        Boundary note (BVA): the capture-thread/wav_file close ordering and the short-vs-long worker
+        join are thread-timing boundaries, not cleanly unit-testable without live models/audio.
+        Integration-tested-manually (live Ctrl+C run pending)."""
+        # Decide the flush gate BEFORE clearing is_running: the worker reads _run_final_flush the
+        # instant its loop exits, which can happen before the capture-finalize block below completes.
+        # Setting it later (after the ~5s WAV close) would race the worker into a decode we meant to skip.
+        self._run_final_flush = flush
         self.is_running = False
         if hasattr(self, 'stream'):
             self.stream.stop()
             self.stream.close()
 
-        # Let the worker run its final flush. Bounded to one encoder pass; cap the wait so a wedged
-        # decode cannot hang shutdown forever (worker is a daemon thread).
-        if hasattr(self, 'worker'):
-            self.worker.join(timeout=30)
-
-        # Drain and close the capture file. Sentinel flushes every block already queued.
+        # Finalize the capture WAV BEFORE any wait on the heavy Whisper worker. The sentinel makes
+        # the writer thread drain every queued block and exit; we MUST join it before closing
+        # wav_file, otherwise the writer could touch a closed file (close race). Bounded to ~5s so a
+        # properly-closed header is guaranteed fast even under a impatient second Ctrl+C.
         if self.capture_path:
             self.capture_queue.put(None)
             if self.capture_thread:
-                self.capture_thread.join(timeout=10)
+                self.capture_thread.join(timeout=5)
             if self.wav_file:
                 try:
                     self.wav_file.close()
                 except Exception as e:
                     logger.error(f"[{self.role}] Capture close error: {e}")
                 self.wav_file = None
+
+        # Join the worker. The flush gate was set at the top of stop() (before is_running cleared), so
+        # the worker already read the correct decision when its loop exited. With flush=False the
+        # decode is skipped and the daemon worker exits almost immediately; with flush=True allow the
+        # longer bounded wait for the single residual encoder pass.
+        if hasattr(self, 'worker'):
+            self.worker.join(timeout=30 if flush else 2)
