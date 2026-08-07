@@ -61,8 +61,11 @@ with an English-only codebase.
 
 # 🔵 Phase 7 Roadmap
 
-Five goals, in the order they should be executed. Order is chosen so that each step is
-independently shippable and the riskiest work lands last.
+Goals in the order they should be executed, chosen so that each step is independently
+shippable and the riskiest work lands last.
+
+**Do 7.6a first.** It is a small change and it closes a security ordering defect — capture
+currently starts before authentication.
 
 ## 7.1 — Multilingual ASR (EN + ZH in one meeting) 🔴 BLOCKING BUG
 
@@ -304,6 +307,74 @@ the transcript) or at the tap's native 48 kHz (higher fidelity for disputes, 3x 
 Opt-in via `ARCHIVE_AUDIO` in `.env` / `.env.example`, defaulting to **off** — on disk-space
 grounds, and because recording carries consent expectations the operator should choose
 deliberately. `history/` is already gitignored, so audio stays out of version control.
+
+## 7.6 — Move configuration into the UI; gate capture behind an explicit Start
+
+The local web page is the control surface, and the app does not currently treat it as one.
+Configuration is hand-maintained in `.env`, and capture begins on page load rather than on
+user intent.
+
+### 7.6a — Capture must not start before authentication 🔴 SECURITY ORDERING
+
+`app.py` executes in this order:
+
+1. `get_global_state()` — loads `.env`, constructs `LocalAdvisor` (loads the embedding model)
+2. `g_state.start_recording()` — constructs both `Transcriber`s, preloads Whisper into the NPU,
+   **opens the microphone and system-audio streams**, and calls `buffer.start_session()`, which
+   writes a transcript file into `history/`
+3. *…then* the PIN gate
+4. *…then* role selection
+
+**The microphone goes live, and a transcript file starts being written, before anyone
+authenticates.** Opening the URL is sufficient — no PIN, no role selected. For a product whose
+premise is protecting confidential meetings, this is an ordering defect, not merely eager
+startup. Fixing it is a small, independent change and should land early, ahead of the rest of
+Phase 7.
+
+### 7.6b — Warm the model eagerly, open the streams lazily
+
+Purely lazy loading is the wrong correction: `turbo` is 1.61 GB and there are two
+`Transcriber` instances, so deferring everything to the Start button puts that wait at the
+worst possible moment — the meeting is about to begin.
+
+Split the two concerns, which are currently fused inside `Transcriber.__init__`:
+
+- **NPU/model warm-up** — harmless, touches no audio device. May run eagerly in a background
+  thread on page load.
+- **Opening the audio streams** — must be gated behind authentication *and* an explicit Start.
+
+That yields no hot microphone and no wait at Start.
+
+### 7.6c — `.env` shrinks to true environment variables
+
+The problem is not the file; it is **hand-maintaining settings that actually change per
+meeting**. Sorted by real lifecycle:
+
+| Setting | Real lifecycle | Belongs in |
+|---|---|---|
+| `HF_HOME`, `PIP_CACHE_DIR` | must exist before libraries import or download | genuinely environment variables; `setup_mac.sh` already exports them |
+| `ENABLE_LOCAL_RAG` | per session | UI toggle |
+| `AUDIO_BACKEND` (planned) | per session | UI — already the plan in 7.3 |
+| `ARCHIVE_AUDIO` (planned) | per **meeting** | UI |
+| `MULTILINGUAL_MODE` | **split across two lifecycles** — see below | must be separated |
+
+`MULTILINGUAL_MODE` is a genuine design smell. The embedding model is chosen in
+`build_index.py` and baked into the pickle as `model_name`, which `local_advisor.py` then
+loads — so at runtime the flag is a **no-op for RAG**. Only the ASR model choice is a runtime
+decision. One flag spanning build time and run time should become two things: an argument to
+`build_index.py`, and a language/model selector in the UI.
+
+That leaves `.env` holding only the two cache paths, which are arguably setup artifacts rather
+than configuration.
+
+### 7.6d — Settings must be persisted by the app, not edited by a human
+
+Streamlit widget state does not survive a restart, and re-picking the microphone under time
+pressure before a hearing is exactly the failure this should prevent. So UI-owned settings need
+persistence — as a **generated state file** (e.g. `.aegis_settings.json`, gitignored) written by
+the app.
+
+Same principle as `FILEMAP.md`: **produced by the tool, never maintained by hand.**
 
 ## 🐛 Known Issues
 
