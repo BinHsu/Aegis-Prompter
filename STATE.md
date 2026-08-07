@@ -8,12 +8,19 @@ Tracks progress, roadmap, and open issues. For how to work in the repo, see
 ## 🧭 Design stance
 
 > **Whatever your ears can hear and whatever your mouth says, we ingest.**
+>
+> **Our job is not to lose it. What it gets used for is the file owner's decision.**
 
 Capture is deliberately **source-agnostic**. It does not matter whether the meeting runs in
 Zoom's native app, Meet in a browser tab, Teams, or anything else — the system takes the
 entire system output mix as one track and the microphone as the other. There are exactly
 **two tracks, forever**, and the existing dual-`Transcriber` architecture is exactly the
 right shape for that.
+
+The second half of the stance draws the product boundary: the system is responsible for
+**completeness of capture**, not for policy about the captured material. Retention,
+post-processing, redaction, and disclosure are the operator's calls — which is why cleanup
+(7.4) and audio retention (7.5) are opt-in tools rather than pipeline behaviour.
 
 Consequences that follow directly from this stance, and should not be relitigated without
 revisiting the stance itself:
@@ -175,26 +182,128 @@ device" from "reload model".
 
 Bonus: a dropdown makes the hardcoded-microphone-keyword bug (Known Issues) irrelevant.
 
-## 7.4 — Speaker diarization (Participant A / B) — do last
+## 7.4 — Speaker labels and transcript cleanup: an offline operator script
 
-Scope: **the microphone track does not need this** (one person). Only the system-audio track
-does, since all remote participants arrive mixed into one stream.
+**Decision: no ASR-side diarization. No second model.** Speaker attribution and text cleanup
+happen after the meeting, in a shell script the operator runs by hand.
 
-Whisper does not diarize; this needs a second model. Candidates: pyannote segmentation 3.0
-exported to ONNX by sherpa-onnx (a single 6.6 MB file), or FluidAudio (native Swift + MLX).
-Caveat: sherpa-onnx on macOS has **no ANE support** and runs on CPU.
+The reasoning that removes the whole ML problem:
 
-The real difficulty is architectural, not the model. The current pipeline flushes on 0.4s of
-silence and transcribes each segment in isolation, but diarization needs continuous audio to
-cluster speaker embeddings. That means maintaining a **separate rolling raw-audio buffer**
-alongside the existing VAD segmentation.
+- **Live transcription does not need speaker identity.** `_local_rag_worker_loop` triggers on
+  `role == "Participant"` only; it never cares *which* remote person is speaking. Participant
+  A vs B matters solely for the archive, and the archive is read after the fact.
+- **Live subtitle quality is explicitly not a goal.** The speaker on stage needs the gist,
+  not a clean transcript. Everything cosmetic is deferred.
 
-Why this is last, and why it needs a spike before any commitment:
+So the plan is a script — `tools/` — that feeds an archived `history/Meeting_*.md` to headless
+Claude (`claude -p`) with a fixed prompt, and writes a cleaned copy alongside it. The prompt
+covers, using full-document context:
 
-- Speaker embeddings are unreliable on segments under ~1 second — and short interjections are
-  exactly the hostile-questioning case this product exists for.
-- The design stance makes it harder: music and unrelated audio in the global mix contaminate
-  speaker clustering.
+- normalizing to Traditional Chinese (see below on why this beats OpenCC),
+- re-flowing punctuation and segment boundaries broken by VAD flushes,
+- splitting `Participant` into distinct speakers from conversational context,
+- dropping residual Whisper hallucinations.
+
+Consequences worth recording:
+
+- **This deletes what was the highest-risk item on the roadmap.** No pyannote / sherpa-onnx,
+  no speaker embeddings, no online clustering, no extra rolling raw-audio buffer, and no
+  exposure to the unsolved problem that speaker embeddings are unreliable on sub-second
+  segments — exactly the short-interjection case this product exists for.
+- **Speaker labelling itself needs no archived audio** — the cleanup pass works from text.
+  Audio retention is a separate feature with a separate rationale; see 7.5.
+- **Do not apply OpenCC in the live path.** Its Simplified/Traditional ambiguities (后/後 and
+  similar, worst in names and places) are precisely the cases that need surrounding context to
+  resolve, which is what the post-processing pass has and a character-mapping rule does not.
+  Live keeps only the `initial_prompt` nudge from 7.1.
+- **The app's offline guarantee is unaffected.** This is an operator tool run deliberately
+  outside the application; no runtime code path reaches the network. It should still carry a
+  one-line notice that running it sends transcript content to Claude, since `history/`
+  contains meeting records.
+- Write to a new file rather than overwriting. The raw transcript is the record of what was
+  actually heard.
+
+### How the comparable products split their audio
+
+Two different Zoom features get confused here, and only the second is a real comparison.
+
+**Zoom's in-meeting live captions** are not comparable. Zoom *is* the conferencing layer, so
+each participant is a separate connection, and it labels the transcript by **active speaker
+detection** — which connection is currently transmitting. That is transport metadata, not
+inference, which is why those labels are accurate. It also means the approach cannot be
+borrowed: this project captures the **post-mix system output**, where per-participant identity
+was destroyed by the mixer before the audio reached the speakers. An information asymmetry,
+not a capability gap. And it fails in this product's own scenario anyway — several people
+sharing one connection (a hearing room, one conference mic) all get attributed to the same
+participant.
+
+**Zoom's "listen to the meeting" mode** (AI Companion / My Notes, which also works over
+third-party platforms like Teams and Meet) *is* the real comparison, and it lands on the same
+architecture as this project — because the OS forces it:
+
+- **macOS provides no single API that yields microphone and system output as one stream.** The
+  mic is an input device; system output needs either a virtual driver or a Core Audio process
+  tap. Capture is necessarily two separate operations for any device-audio listener — Zoom's
+  My Notes, Granola, or this project.
+- **Zoom's own wording indicates inference, not metadata**: AI Companion "will do its best to
+  differentiate between **you and other parties** to keep track of **multiple speakers**."
+  "Does its best" is not how transport metadata is described. And the you-vs-others boundary
+  is exactly the mic-vs-system-output boundary — the same split as `Speaker (You)` /
+  `Participant` here, for the same physical reason. Distinguishing multiple speakers *within*
+  the others is still guesswork on their side too.
+- **Unverified**: whether Zoom sends the two captures to its ASR separately or mixes them
+  first. Undocumented, and it does not matter here — this project already keeps them separate,
+  which is strictly better since role labels come for free.
+
+Conclusion: the comparable products hold no extra card on speaker attribution. Also, Zoom's
+version is cloud-processed (Cloud Recordings, summary emailed), so it is unusable under the
+zero-trust premise regardless. Local ASR remains the right call.
+
+## 7.5 — Optional dual-track audio retention
+
+> **The system's job is not to lose anything. What the recording is used for is the file
+> owner's decision.**
+
+Retaining audio serves two purposes, neither of them live: **post-processing** and
+**corroboration**. The second is the stronger one — a transcript is an inferred artifact,
+whereas the audio is the record. In an interpellation or an earnings call, "I did not say
+that" is a dispute the transcript alone cannot settle.
+
+Design constraints, in order of how easily each one silently ruins the feature:
+
+- **Write from the raw stream, upstream of VAD.** `_processing_thread` discards everything VAD
+  classifies as non-speech, so archiving downstream would lose precisely the **VAD
+  misjudgements** — exactly the material worth going back to verify. "Do not lose anything"
+  only holds if the tap point is the continuous callback stream.
+- **Keep the two tracks in separate files. Never mix them.** Mixing destroys the role
+  attribution that this architecture gets for free, and which comparable products only obtain
+  because the OS forces the same split on them.
+- **Do not block the audio callback.** Disk writes go through a queue and a dedicated writer
+  thread, the same pattern already used for `inference_queue`. This is a load-bearing
+  invariant, not a preference.
+- **Lossless only.** Lossy compression undermines evidentiary value. Python's stdlib `wave`
+  module writes WAV with **no new dependency**; FLAC is a later size optimization if needed.
+- **Name files to pair with the transcript** — `history/Meeting_<session_id>_mic.wav` and
+  `_system.wav` alongside the existing `Meeting_<session_id>.md`, so the 7.4 cleanup script can
+  find them without guessing.
+- **Record the precise session start time** so a transcript line's wall-clock timestamp can be
+  converted to an offset into the WAV. Without it, "jump to this moment in the audio" — the
+  whole point of corroboration — does not work.
+
+Size, at 16 kHz mono int16 lossless:
+
+| | per hour, per track | both tracks | 3-hour hearing |
+|---|---|---|---|
+| WAV @ 16 kHz | 115 MB | 230 MB | ~690 MB |
+| WAV @ 48 kHz (tap's native rate) | 346 MB | 691 MB | ~2.1 GB |
+
+Open decision: archive at 16 kHz (what the pipeline actually processed, so the record matches
+the transcript) or at the tap's native 48 kHz (higher fidelity for disputes, 3x the disk).
+16 kHz is the suggested default.
+
+Opt-in via `ARCHIVE_AUDIO` in `.env` / `.env.example`, defaulting to **off** — on disk-space
+grounds, and because recording carries consent expectations the operator should choose
+deliberately. `history/` is already gitignored, so audio stays out of version control.
 
 ## 🐛 Known Issues
 
