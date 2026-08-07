@@ -1,64 +1,79 @@
-# Aegis Prompter — Project State
+# AGENTS.md — Working on Aegis Prompter
 
-This file tracks the state of the Staff Officer project after its transition from a
-Gemini-dependent script to a **Pure Local + Multi-Role** architecture (English-only
-codebase), as mandated by the Phase 6 implementation plan.
+Aegis Prompter is a **100% offline, multi-role teleprompter** for high-pressure meetings,
+built for Apple Silicon. It transcribes two audio tracks on the Mac NPU via `MLX-Whisper`,
+matches the far-end speech against a local vector index to trigger pre-written defensive
+scripts, and lets a remote staff operator inject live cues into the speaker's display.
 
-**Current release: `v0.0.1`** — BlackHole audio backend.
+> Project status, roadmap, and known issues live in **[STATE.md](STATE.md)**.
+> This file is about *how to work in the repo*, not what is left to do.
 
-## 🧠 Development Standards
-- **Documentation Sync**: Whenever a new feature, architecture change, or configuration toggle (like `.env` flags) is implemented, you MUST evaluate whether it needs to be documented in `README.md` to keep the user manual up to date.
-- **English-only codebase**: All variables, docstrings, comments, console logs, and test assertions must be in English.
+## Commands
 
-## 🟢 Completed — Phase 6
-- Defined Phase 6 Implementation Plan.
-- Switched licensing to MIT; added the `LICENSE` file.
-- Updated `requirements.txt` to remove `google-genai` and insert `sentence-transformers`.
-- Updated `.env` to support `MULTILINGUAL_MODE`.
-- **Knowledge Compiler (`src/build_index.py`)**: compiles `.md`/`.txt` into `context/knowledge_index.pkl` via `sentence-transformers`.
-- **Pure Local RAG (`src/local_advisor.py`)**: loads the vector index and runs cosine-similarity trigger matching. `gemini_advisor.py` removed.
-- **State & UI Refactor (`app.py`, `global_state.py`)**:
-  - Codebase translated to English (`tests/unit/test_buffer.py` was the last holdout — its assertions still expected the pre-translation Chinese strings and failed until fixed).
-  - Role routing via query parameter (`?role=speaker` vs `?role=staff`) — `app.py:96`.
-  - Staff manual broadcast UI pushing into `global_state.buffer` — `app.py:183`.
-  - Auto-scroll UX via `get_formatted_dialogue(max_lines=5)` — `app.py:164`.
-- **Decoupled audio pipeline from the NPU bottleneck** to stop frames dropping (`transcriber.py` now uses a separate `inference_queue` + dedicated inference thread).
+```bash
+bash setup_mac.sh                # idempotent setup: portaudio, BlackHole, .venv, deps
+source .venv/bin/activate        # setup_mac.sh does NOT activate for you
+python src/build_index.py        # compile context/docs/*.{md,txt} -> context/knowledge_index.pkl
+streamlit run src/app.py         # run the app (serves on :8501, prints LAN URL + 4-digit PIN)
+bash run_tests.sh                # unit tests (requires .venv to already exist)
+```
 
-## 🔵 Next: Core Audio Process Tap (evaluated, not yet implemented)
+Ad-hoc test run without the wrapper script — `PYTHONPATH` **must** be the repo root:
 
-Goal: replace the BlackHole dependency with the native Core Audio process-tap API.
-Feasibility was verified empirically on macOS 26.6 using Command Line Tools `clang`
-only (no Xcode required). Findings worth keeping:
+```bash
+PYTHONPATH="$PWD" .venv/bin/python -m pytest tests/unit -q
+```
 
-- `AudioHardwareCreateProcessTap` is `API_AVAILABLE(macos(14.2))` — **14.2, not 14.4**.
-  `CATapDescription.bundleIDs` and `.processRestoreEnabled` require macOS 26.0.
-- Tap stream format is fixed at **48kHz / float32**; a mono mixdown tap yields 1 channel.
-  `transcriber.py` requests `samplerate=16000`, so resampling behaviour through
-  PortAudio is **the one integration point still unverified**. `webrtcvad` accepts
-  48000, so the fallback is to run VAD at 48k and resample only before Whisper.
-- A tap exposed through a **non-private aggregate device is visible cross-process** as an
-  ordinary input device. This is the key architectural result: `sounddevice`/PortAudio
-  enumerate it like any mic, so **`transcriber.py` needs no changes** — only the device
-  keyword list in `global_state.py:77`.
-- `muteBehavior = CATapUnmuted` lets the user keep hearing the audio, removing the need
-  for a Multi-Output Device (BlackHole requires one or the speaker goes deaf).
-- **TCC**: tap capture triggers a `kTCCServiceAudioCapture` check, and TCC attributes it
-  to the **responsible process — the terminal app (e.g. `Terminal.app`), not the tap
-  binary**. This is *not* a new class of risk: the existing BlackHole path already
-  requires that same responsible process to hold `kTCCServiceMicrophone`.
-- **Largest ongoing cost**: the aggregate device binds a specific output device as its
-  main sub-device, so it goes stale when the user switches output (plugs in headphones).
-  Requires a `kAudioHardwarePropertyDefaultOutputDevice` listener to rebuild.
-  BlackHole does not have this problem — the only respect in which it is superior.
+## Standards
 
-Planned approach — **additive backend, BlackHole retained as fallback**:
-- Add `src/native/aegis_tap.m`, compiled by `setup_mac.sh`.
-- `global_state.py` launches it as a subprocess in `start_recording()`, SIGTERMs it in `stop_recording()`.
-- Add `AUDIO_BACKEND=tap|blackhole` to `.env` (and document it in `README.md`).
-- Fall back to BlackHole when the tap device is absent or macOS is older than 14.2.
+- **English-only codebase.** Variables, docstrings, comments, console logs, and test
+  assertions are all in English. This was a full-repo migration; do not reintroduce
+  Chinese into code. User-facing README prose is intentionally bilingual.
+- **Documentation Sync.** Whenever you add a feature, change architecture, or introduce a
+  configuration toggle (e.g. a new `.env` flag), you MUST evaluate whether `README.md`
+  needs updating to keep the user manual accurate.
+- Notable changes go in `CHANGELOG.md`; project state goes in `STATE.md`.
 
-## 🐛 Known Issues
-- `global_state.py:76` looks for `["MacBook Air Microphone", "Built-in Microphone"]`.
-  On a MacBook Pro neither keyword matches, so mic selection silently relies on
-  `fallback_to_default`. The result is usually correct but the keyword list is not
-  doing its job.
+## Architecture
+
+| File | Role |
+|---|---|
+| `src/app.py` | Streamlit UI, PIN auth, role routing, polling loop |
+| `src/global_state.py` | `GlobalState` singleton — owns both transcribers and the RAG worker thread |
+| `src/transcriber.py` | One audio device → VAD → NPU inference → buffer. Instantiated twice |
+| `src/dialogue_buffer.py` | Thread-safe transcript ring buffer + session archiving to `history/` |
+| `src/local_advisor.py` | Loads the vector index, cosine-similarity trigger matching |
+| `src/build_index.py` | Offline knowledge compiler (`.md`/`.txt` → pickled embeddings) |
+
+Audio flows as **two independent tracks**, never mixed: the hardware mic is the
+`Speaker (You)` role, and the BlackHole loopback is the `Participant` role. Each gets its
+own `Transcriber` instance with its own VAD state and queues.
+
+## Gotchas
+
+- **Two import conventions.** At runtime `app.py:19` appends `src/` to `sys.path`, so
+  modules import each other bare (`from global_state import ...`). Tests import with the
+  package prefix (`from src.dialogue_buffer import ...`) and need `PYTHONPATH` at the repo
+  root. Don't "fix" one to match the other without changing both.
+- **`NPU_LOCK` in `transcriber.py` is load-bearing.** Concurrent Metal access from the two
+  transcriber threads crashes the process. Every `mlx_whisper` call — including the
+  warm-up call in `__init__` — must hold it.
+- **Never block the audio callback.** `_audio_callback` only does VAD and enqueues.
+  Whisper inference lives on a separate `inference_queue` + thread precisely because
+  running it inline dropped frames. Keep that separation.
+- **`GlobalState` is a singleton behind `@st.cache_resource`.** Streamlit re-runs the whole
+  script on every poll tick, so module-level code executes constantly. Anything expensive
+  or stateful must sit behind the singleton or a cache decorator.
+- **Audio devices are matched by name substring**, not index — see
+  `Transcriber.find_device_index`. Device indices shift between runs, so never hardcode one.
+- **`context/` is gitignored.** The knowledge base is the user's private notes. Tests must
+  never depend on real files there; build fixtures with `tmp_path`.
+- **`build_index.py` chunks on double-newlines** and drops chunks of 10 characters or
+  fewer (`build_index.py:47`). Blank lines inside a Q&A block split it into separate
+  vectors and weaken matching.
+- **`MULTILINGUAL_MODE` is a compile-time flag only.** It is read in `build_index.py:18` to
+  pick the embedding model, and the choice is then baked into the pickle as `model_name`.
+  `local_advisor.py:40` always loads whatever the bundle recorded, so editing `.env` has
+  **no effect until you recompile the index**. Compiling non-English notes under the
+  English-only `all-MiniLM-L6-v2` yields an index that loads fine but never matches.
+- **`.env` is gitignored**; `.env.example` is the tracked template. Update both together.

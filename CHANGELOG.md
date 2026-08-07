@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Changed
+- Split the single tracker file by purpose: `AGENTS.md` now holds only agent-facing working
+  instructions (commands, architecture, standards, gotchas), while project progress,
+  roadmap, and known issues moved to the new `STATE.md`. The file inherited its
+  state-tracker content from the original `CLAUDE.md`, which did not match what `AGENTS.md`
+  is conventionally for.
+
 ## [0.0.1] — 2026-08-07
 
 First tagged release. A fully offline, multi-role teleprompter for Apple Silicon,
@@ -45,6 +54,6 @@ using the **BlackHole** virtual audio driver to capture the far-end participant.
 ### Known Issues
 - Requires the BlackHole virtual driver plus a Multi-Output Device for the speaker to
   hear the meeting while it is being captured. Replacing this with the native Core Audio
-  process-tap API is evaluated and planned — see `AGENTS.md`.
+  process-tap API is evaluated and planned — see `STATE.md`.
 - Microphone auto-detection keywords in `global_state.py` do not match MacBook Pro
   hardware and fall through to the system default input.
