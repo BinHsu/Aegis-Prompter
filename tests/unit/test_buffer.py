@@ -4,92 +4,92 @@ import shutil
 from src.dialogue_buffer import DialogueBuffer
 
 def test_buffer_initialization():
-    """驗證緩衝區初始化狀態"""
+    """Verifies the initial state of the buffer."""
     buffer = DialogueBuffer(max_history=5)
     assert buffer.max_history == 5
     assert len(buffer.dialogue) == 0
-    assert buffer.advice == "等待對話..."
+    assert buffer.advice == "Awaiting dialogue..."
     assert buffer.is_thinking is False
 
 def test_buffer_add_entry_sliding_window():
-    """驗證滑動窗口邏輯：超過上限時應彈出舊對話"""
+    """Verifies sliding window logic: the oldest entry is evicted past the limit."""
     buffer = DialogueBuffer(max_history=3)
-    
+
     buffer.add_entry("User", "Hello 1")
     buffer.add_entry("User", "Hello 2")
     buffer.add_entry("User", "Hello 3")
     assert len(buffer.dialogue) == 3
     assert buffer.dialogue[0]["text"] == "Hello 1"
-    
-    # 加入第 4 句，第 1 句應被彈出
+
+    # Adding a 4th entry should evict the 1st
     buffer.add_entry("User", "Hello 4")
     assert len(buffer.dialogue) == 3
     assert buffer.dialogue[0]["text"] == "Hello 2"
     assert buffer.dialogue[2]["text"] == "Hello 4"
 
 def test_buffer_get_last_role():
-    """驗證最後發言者偵測"""
+    """Verifies detection of the most recent speaker."""
     buffer = DialogueBuffer()
     assert buffer.get_last_role() is None
-    
+
     buffer.add_entry("Bin", "Test message")
     assert buffer.get_last_role() == "Bin"
-    
+
     buffer.add_entry("Other", "Replying...")
     assert buffer.get_last_role() == "Other"
 
 def test_buffer_clear():
-    """驗證清除邏輯"""
+    """Verifies the clear logic resets dialogue and advice state."""
     buffer = DialogueBuffer()
     buffer.add_entry("User", "Secret")
     buffer.set_advice("Some advice", is_thinking=True)
-    
+
     buffer.clear()
     assert len(buffer.dialogue) == 0
-    assert buffer.advice == "等待對話..."
+    assert buffer.advice == "Awaiting dialogue..."
     assert buffer.is_thinking is False
 
 def test_buffer_session_logging(tmp_path):
-    """驗證本地存檔功能（使用 pytest 的 tmp_path 確保環境隔離）"""
+    """Verifies local session archiving (isolated via pytest's tmp_path)."""
     buffer = DialogueBuffer()
     history_dir = tmp_path / "test_history"
     session_id = "TEST_SESSION_001"
-    
-    # 啟動 Session
+
+    # Start the session
     buffer.start_session(session_id, str(history_dir))
-    
+
     expected_file = history_dir / f"Meeting_{session_id}.md"
     assert expected_file.exists()
-    
-    # 測試對話追加
+
+    # Verify dialogue is appended
     buffer.add_entry("Tester", "Recording this line.")
     content = expected_file.read_text(encoding="utf-8")
     assert "Tester" in content
     assert "Recording this line." in content
-    
-    # 測試建議追加
+
+    # Verify advice is appended
     buffer.set_advice("Strategic Tip", is_thinking=False)
     content = expected_file.read_text(encoding="utf-8")
     assert "Strategic Tip" in content
 
 def test_buffer_concurrency():
-    """驗證多執行緒寫入的並發安全性 (Concurrency Safety)"""
+    """Verifies thread-safety of concurrent writes (Concurrency Safety)."""
     import threading
     buffer = DialogueBuffer(max_history=100)
-    
+
     def worker(role, count):
         for i in range(count):
             buffer.add_entry(role, f"Message {i}")
-            
+
     threads = []
-    # 啟動 5 個執行緒，每個執行緒塞入 20 條訊息
+    # Spawn 5 threads, each pushing 20 messages
     for i in range(5):
         t = threading.Thread(target=worker, args=(f"Thread-{i}", 20))
         threads.append(t)
         t.start()
-        
+
     for t in threads:
         t.join()
-        
-    # 因為有加 Lock，不應該出現 race condition，總量應正好是 100
+
+    # The Lock must prevent race conditions, so the total is exactly 100
     assert len(buffer.dialogue) == 100
