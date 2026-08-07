@@ -396,26 +396,42 @@ streamlit run src/app.py
 - **The user never opens `.env` in an editor.** If they need to change the cache directory, they
   reset and choose again.
 
-#### The enabling prerequisite: lazy imports
+#### The enabling prerequisite: defer one import
 
-**This design does not work without deferring the ML library imports**, for two separate
-reasons:
+**This design does not work unless the ML libraries are imported after the cache path is
+known.** `huggingface_hub.constants.HF_HOME` is fixed at import time — measured, see Known
+Issues — so once `huggingface_hub` is loaded, writing `.env` and setting `os.environ` afterwards
+**cannot take effect in that process**.
 
-1. `huggingface_hub.constants.HF_HOME` is fixed at import time — measured, see Known Issues. So
-   if `huggingface_hub` has already been imported, writing `.env` and setting `os.environ`
-   afterwards **cannot take effect in that process**. The path must be set *before* the first
-   import.
-2. More fundamentally, on a clone where `setup_mac.sh` has not finished, `streamlit run` cannot
-   even boot: `app.py` imports `global_state`, which imports `sounddevice`, `webrtcvad`,
-   `mlx_whisper`, and `sentence_transformers` at module scope. Missing packages are an
-   `ImportError` before any UI renders.
+That is the whole reason. It does *not* additionally follow that a bare clone must be able to
+boot: the chosen setup boundary keeps `pip install` inside `setup_mac.sh`, so by the time
+`streamlit run` happens every package is present.
 
-So the first-run path must reach the browser with **zero project imports**. `import mlx_whisper`
-moves inside the warm-up function; `from sentence_transformers import SentenceTransformer` moves
-into `LocalAdvisor`'s load path.
+#### The change is smaller than it looks: one new file plus `app.py`
 
-This one change also fixes the broken `HF_HOME` (Known Issues) and removes the current torch
-import cost from every `streamlit run`, even when nothing is downloaded.
+The entire heavy import chain hangs off a **single line**. Verified by tracing the graph:
+
+- `app.py:20` — `from global_state import get_global_state`, the **only** import of `global_state`
+- `global_state.py:6-7` — the **only** imports of `local_advisor` and `transcriber`, which in turn
+  are the only places `sentence_transformers`, `mlx_whisper`, `sounddevice`, and `webrtcvad`
+  appear
+- `app.py:27` — the **only** call to `start_recording()`
+- `import streamlit` pulls **none** of those heavy modules (measured)
+
+So there is no need to rewrite import statements inside `transcriber.py` or `local_advisor.py`.
+Those modules may keep their module-scope imports, because they are only loaded *after* the cache
+path is set. Deferring `app.py:20` alone is sufficient.
+
+| File | Change |
+|---|---|
+| `src/bootstrap.py` (new) | Zero project imports — stdlib plus `dotenv` only. Reads and writes `.env`, resolves the cache directory, sets `os.environ["HF_HOME"]` before anything heavy loads, checks whether weights are present, owns the readiness state machine. |
+| `app.py` | Move `from global_state import ...` out of module scope into a function called only once configuration exists; drop the `app.py:27` auto-start; add the first-run wizard and Start gating. |
+| `transcriber.py` | **Untouched.** |
+| `local_advisor.py` | **Untouched.** |
+| `global_state.py` | **Untouched**, until `ENABLE_LOCAL_RAG` moves to a UI toggle — a separate, smaller step. |
+
+Concentrating the work this way is also what makes 7.6 safe to do *after* 7.1: the model-string
+change in `transcriber.py` and the bootstrap work do not overlap.
 
 #### Readiness state machine
 
