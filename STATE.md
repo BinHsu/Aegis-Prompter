@@ -345,17 +345,17 @@ Split the two concerns, which are currently fused inside `Transcriber.__init__`:
 
 That yields no hot microphone and no wait at Start.
 
-### 7.6c — `.env` shrinks to true environment variables
+### 7.6c — `.env` can be removed entirely
 
 The problem is not the file; it is **hand-maintaining settings that actually change per
 meeting**. Sorted by real lifecycle:
 
 | Setting | Real lifecycle | Belongs in |
 |---|---|---|
-| `HF_HOME`, `PIP_CACHE_DIR` | must exist before libraries import or download | genuinely environment variables; `setup_mac.sh` already exports them |
-| `ENABLE_LOCAL_RAG` | per session | UI toggle |
-| `AUDIO_BACKEND` (planned) | per session | UI — already the plan in 7.3 |
-| `ARCHIVE_AUDIO` (planned) | per **meeting** | UI |
+| `HF_HOME`, `PIP_CACHE_DIR` | must be set before the ML libraries are imported | **not configuration at all** — a path derived from the repo location |
+| `ENABLE_LOCAL_RAG` | per session | UI toggle, default on |
+| `AUDIO_BACKEND` (planned) | capability, not preference | auto-detect: use the tap when available, else BlackHole |
+| `ARCHIVE_AUDIO` (planned) | per **meeting** | UI toggle, default off |
 | `MULTILINGUAL_MODE` | **split across two lifecycles** — see below | must be separated |
 
 `MULTILINGUAL_MODE` is a genuine design smell. The embedding model is chosen in
@@ -364,20 +364,42 @@ loads — so at runtime the flag is a **no-op for RAG**. Only the ASR model choi
 decision. One flag spanning build time and run time should become two things: an argument to
 `build_index.py`, and a language/model selector in the UI.
 
-That leaves `.env` holding only the two cache paths, which are arguably setup artifacts rather
-than configuration.
+The cache paths are the interesting case, because **the `.env` mechanism for them does not
+work** (see Known Issues) and never did. The path is always `<repo>/.hf_cache`, so it is
+derivable from `__file__` rather than configurable — set it at the entry point before any
+project import. `PIP_CACHE_DIR` matters only during `pip install`, which `setup_mac.sh` already
+exports for itself.
 
-### 7.6d — Settings must be persisted by the app, not edited by a human
+With the cache paths derived and everything else moved to the UI, **`.env` has no remaining
+reason to exist** and both it and `.env.example` can be deleted.
 
-Streamlit widget state does not survive a restart, and re-picking the microphone under time
-pressure before a hearing is exactly the failure this should prevent. So UI-owned settings need
-persistence — as a **generated state file** (e.g. `.aegis_settings.json`, gitignored) written by
-the app.
+### 7.6d — No settings persistence is needed
 
-Same principle as `FILEMAP.md`: **produced by the tool, never maintained by hand.**
+Considered and rejected. Every setting has a sensible default plus a UI override, which is
+exactly the model Meet and Zoom web use for device selection: show the system default, let the
+user change it, persist nothing.
+
+`find_device_index(fallback_to_default=True)` already provides that default behaviour; only the
+dropdown to override it is missing (7.3). Nothing needs to survive a restart, so there is no
+`.aegis_settings.json` and, usefully, no stored device reference — which also removes the
+question of whether to store a device *name* (disappears when AirPods disconnect) or *index*
+(changes between reboots). Enumerate live, every time.
 
 ## 🐛 Known Issues
 
+- **`HF_HOME` in `.env` has never taken effect; model weights land outside the project.**
+  Two facts combine. First, import order: `app.py` imports `global_state`, which imports
+  `local_advisor` and `transcriber` at module scope, pulling in `sentence_transformers` and
+  `mlx_whisper` — while `load_dotenv()` runs later, inside `_init_once()`. Second, measured
+  directly: `huggingface_hub.constants.HF_HOME` is computed at import time, and setting the
+  environment variable afterwards is ignored (verified — the constant kept
+  `~/.cache/huggingface` after a late `os.environ` assignment).
+  So weights download to `~/.cache/huggingface`, contradicting `setup_mac.sh`'s closing claim
+  that "GBs of ML weights are safely cached within the project folder", and leaving the
+  gitignored `.hf_cache/` unused. `setup_mac.sh` does export `HF_HOME`, but only inside its own
+  shell — it is gone by the time `streamlit run` happens in a new shell.
+  Fix per 7.6c: derive the path from `__file__` and set it at the entry point before any
+  project import. Confirm afterwards by checking where weights actually land on a fresh run.
 - **Speaker-audio echo causes double transcription and false RAG triggers.** If the speaker
   uses loudspeakers instead of headphones, the microphone also picks up the far end, so the
   same utterance is transcribed twice — once as `Speaker (You)` and once as `Participant`.
