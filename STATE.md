@@ -142,7 +142,9 @@ Plan — **additive backend first, then flip the default**:
 1. Add `src/native/aegis_tap.m`, compiled by `setup_mac.sh`.
 2. `global_state.py` launches it as a subprocess in `start_recording()`, SIGTERMs it in
    `stop_recording()`.
-3. Add `AUDIO_BACKEND=tap|blackhole` to `.env` and `.env.example`; document in `README.md`.
+3. **Auto-detect rather than configure** (per 7.6c): use the tap when the OS supports it and the
+   device appears, otherwise BlackHole. Surface which one is active in the UI; this is a
+   capability, not a user preference.
 4. Prove it in real meetings, **then** make `tap` the default.
 5. Keep the BlackHole fallback permanently — it covers macOS older than 14.2.
 
@@ -304,9 +306,10 @@ Open decision: archive at 16 kHz (what the pipeline actually processed, so the r
 the transcript) or at the tap's native 48 kHz (higher fidelity for disputes, 3x the disk).
 16 kHz is the suggested default.
 
-Opt-in via `ARCHIVE_AUDIO` in `.env` / `.env.example`, defaulting to **off** — on disk-space
-grounds, and because recording carries consent expectations the operator should choose
-deliberately. `history/` is already gitignored, so audio stays out of version control.
+A **UI toggle, defaulting to off** — per 7.6c this is a per-meeting decision, not a file
+setting. Off by default on disk-space grounds, and because recording carries consent
+expectations the operator should choose deliberately. `history/` is already gitignored, so audio
+stays out of version control.
 
 ## 7.6 — Move configuration into the UI; gate capture behind an explicit Start
 
@@ -345,14 +348,19 @@ Split the two concerns, which are currently fused inside `Transcriber.__init__`:
 
 That yields no hot microphone and no wait at Start.
 
-### 7.6c — `.env` can be removed entirely
+### 7.6c — `.env` stays, but the app writes it; the user never edits it
 
-The problem is not the file; it is **hand-maintaining settings that actually change per
-meeting**. Sorted by real lifecycle:
+The problem was never the file, it is **hand-maintaining** it. `.env` keeps exactly one job:
+recording the **user-chosen model cache directory**. That path genuinely must be configurable
+rather than derived from the repo location — the weights are multi-gigabyte, and an internal
+SSD may not be where the operator wants them. It also genuinely must be an environment
+variable, because `huggingface_hub` reads it at import time.
+
+Everything else leaves the file:
 
 | Setting | Real lifecycle | Belongs in |
 |---|---|---|
-| `HF_HOME`, `PIP_CACHE_DIR` | must be set before the ML libraries are imported | **not configuration at all** — a path derived from the repo location |
+| `HF_HOME` (model cache dir) | chosen once per machine | **`.env`, written by the app** from a first-run UI prompt |
 | `ENABLE_LOCAL_RAG` | per session | UI toggle, default on |
 | `AUDIO_BACKEND` (planned) | capability, not preference | auto-detect: use the tap when available, else BlackHole |
 | `ARCHIVE_AUDIO` (planned) | per **meeting** | UI toggle, default off |
@@ -364,26 +372,82 @@ loads — so at runtime the flag is a **no-op for RAG**. Only the ASR model choi
 decision. One flag spanning build time and run time should become two things: an argument to
 `build_index.py`, and a language/model selector in the UI.
 
-The cache paths are the interesting case, because **the `.env` mechanism for them does not
-work** (see Known Issues) and never did. The path is always `<repo>/.hf_cache`, so it is
-derivable from `__file__` rather than configurable — set it at the entry point before any
-project import. `PIP_CACHE_DIR` matters only during `pip install`, which `setup_mac.sh` already
-exports for itself.
+`PIP_CACHE_DIR` matters only during `pip install`, which `setup_mac.sh` already exports for
+itself, so it does not belong in `.env` either.
 
-With the cache paths derived and everything else moved to the UI, **`.env` has no remaining
-reason to exist** and both it and `.env.example` can be deleted.
+### 7.6d — First-run flow: the web page is the setup wizard
 
-### 7.6d — No settings persistence is needed
+Nothing needs to be downloaded before the first cold start. `setup_mac.sh` keeps its current
+scope — Homebrew dependencies, `.venv`, `pip install` — and **only the model download moves
+behind the UI**:
 
-Considered and rejected. Every setting has a sensible default plus a UI override, which is
-exactly the model Meet and Zoom web use for device selection: show the system default, let the
-user change it, persist nothing.
+```
+bash setup_mac.sh          # brew + .venv + pip install (unchanged)
+streamlit run src/app.py
+  └─ no .env, or no cache path in it → first-run prompt: choose the model cache directory
+     → app writes .env
+     → downloads models, progress shown in the UI
+     → warms the NPU
+     → Start button unlocks
+```
 
-`find_device_index(fallback_to_default=True)` already provides that default behaviour; only the
-dropdown to override it is missing (7.3). Nothing needs to survive a restart, so there is no
-`.aegis_settings.json` and, usefully, no stored device reference — which also removes the
-question of whether to store a device *name* (disappears when AirPods disconnect) or *index*
-(changes between reboots). Enumerate live, every time.
+- **Reset is deleting `.env`** — by hand or via a UI button. That returns the app to the
+  first-run prompt. There is no other configuration state to clear.
+- **The user never opens `.env` in an editor.** If they need to change the cache directory, they
+  reset and choose again.
+
+#### The enabling prerequisite: lazy imports
+
+**This design does not work without deferring the ML library imports**, for two separate
+reasons:
+
+1. `huggingface_hub.constants.HF_HOME` is fixed at import time — measured, see Known Issues. So
+   if `huggingface_hub` has already been imported, writing `.env` and setting `os.environ`
+   afterwards **cannot take effect in that process**. The path must be set *before* the first
+   import.
+2. More fundamentally, on a clone where `setup_mac.sh` has not finished, `streamlit run` cannot
+   even boot: `app.py` imports `global_state`, which imports `sounddevice`, `webrtcvad`,
+   `mlx_whisper`, and `sentence_transformers` at module scope. Missing packages are an
+   `ImportError` before any UI renders.
+
+So the first-run path must reach the browser with **zero project imports**. `import mlx_whisper`
+moves inside the warm-up function; `from sentence_transformers import SentenceTransformer` moves
+into `LocalAdvisor`'s load path.
+
+This one change also fixes the broken `HF_HOME` (Known Issues) and removes the current torch
+import cost from every `streamlit run`, even when nothing is downloaded.
+
+#### Readiness state machine
+
+`GlobalState` needs an explicit lifecycle so the UI can gate on it:
+
+```
+no-config → downloading → warming → ready
+```
+
+The Start button is `disabled` until `ready`. This subsumes 7.6a: capture cannot begin early
+because the control that begins it does not become pressable until warm-up completes.
+
+#### Surfacing progress
+
+`logging` already writes to `logs/aegis_engine_<ts>.log` (configured in `global_state.py`), so
+the UI can tail that file — half the plumbing exists.
+
+**Caveat**: `mlx_whisper` / `huggingface_hub` report download progress through **tqdm on
+stdout, not through `logging`**, so tailing the log will not show it — and the download is
+precisely the phase the user most needs feedback on. This needs either `huggingface_hub`'s
+progress callbacks or explicit stdout capture. Not free.
+
+### 7.6e — No settings persistence beyond the cache path
+
+Considered and rejected for everything else. Each remaining setting has a sensible default plus
+a UI override — exactly the model Meet and Zoom web use for device selection: show the system
+default, let the user change it, persist nothing.
+
+`find_device_index(fallback_to_default=True)` already provides that default; only the dropdown
+to override it is missing (7.3). So there is no `.aegis_settings.json`, and storing no device
+reference also removes the question of whether to store a device *name* (disappears when AirPods
+disconnect) or *index* (changes between reboots). Enumerate live, every time.
 
 ## 🐛 Known Issues
 
@@ -398,8 +462,10 @@ question of whether to store a device *name* (disappears when AirPods disconnect
   that "GBs of ML weights are safely cached within the project folder", and leaving the
   gitignored `.hf_cache/` unused. `setup_mac.sh` does export `HF_HOME`, but only inside its own
   shell — it is gone by the time `streamlit run` happens in a new shell.
-  Fix per 7.6c: derive the path from `__file__` and set it at the entry point before any
-  project import. Confirm afterwards by checking where weights actually land on a fresh run.
+  Fix per 7.6d: defer the ML library imports so the path can be set before the first one runs.
+  The path itself stays user-chosen in `.env` rather than derived, since multi-gigabyte weights
+  may not belong on the internal drive. Confirm afterwards by checking where weights actually
+  land on a fresh run.
 - **Speaker-audio echo causes double transcription and false RAG triggers.** If the speaker
   uses loudspeakers instead of headphones, the microphone also picks up the far end, so the
   same utterance is transcribed twice — once as `Speaker (You)` and once as `Participant`.
