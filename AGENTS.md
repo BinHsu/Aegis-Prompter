@@ -1,79 +1,76 @@
-# AGENTS.md — Working on Aegis Prompter
+# AGENTS.md
 
-Aegis Prompter is a **100% offline, multi-role teleprompter** for high-pressure meetings,
-built for Apple Silicon. It transcribes two audio tracks on the Mac NPU via `MLX-Whisper`,
-matches the far-end speech against a local vector index to trigger pre-written defensive
-scripts, and lets a remote staff operator inject live cues into the speaker's display.
+Boundaries for agents working in this repo. Not a manual — the code is the manual.
 
-> Project status, roadmap, and known issues live in **[STATE.md](STATE.md)**.
-> This file is about *how to work in the repo*, not what is left to do.
+Aegis Prompter is a 100% offline, multi-role teleprompter for Apple Silicon.
 
-## Commands
+## Where to look things up
+
+Do not build a mental map by grepping the tree, and do not trust any hand-written
+architecture description — including one in this file.
+
+| Question | Source of truth |
+|---|---|
+| Does this file / class / function exist, and where? | `FILEMAP.md` (generated) |
+| What is the project working on, what is blocked? | `STATE.md` |
+| What shipped, and when? | `CHANGELOG.md` |
+| How does a user set this up and run it? | `README.md` |
+
+`FILEMAP.md` is **generated from the AST** by `tools/gen_filemap.py`. Never hand-edit it.
+
+Three things regenerate it automatically: the `PostToolUse` hook in `.claude/settings.json`
+(fires whenever an agent edits a `.py` file), `run_tests.sh`, and `setup_mac.sh`. If none of
+those has run — a human editing by hand, or a fresh clone — regenerate it yourself:
 
 ```bash
-bash setup_mac.sh                # idempotent setup: portaudio, BlackHole, .venv, deps
-source .venv/bin/activate        # setup_mac.sh does NOT activate for you
-python src/build_index.py        # compile context/docs/*.{md,txt} -> context/knowledge_index.pkl
-streamlit run src/app.py         # run the app (serves on :8501, prints LAN URL + 4-digit PIN)
-bash run_tests.sh                # unit tests (requires .venv to already exist)
+python tools/gen_filemap.py            # rewrite
+python tools/gen_filemap.py --check    # exit 1 if stale
 ```
 
-Ad-hoc test run without the wrapper script — `PYTHONPATH` **must** be the repo root:
+If `FILEMAP.md` disagrees with the code, the code wins — regenerate rather than reason
+from the stale copy.
 
-```bash
-PYTHONPATH="$PWD" .venv/bin/python -m pytest tests/unit -q
-```
-
-## Standards
+## Hard rules
 
 - **English-only codebase.** Variables, docstrings, comments, console logs, and test
-  assertions are all in English. This was a full-repo migration; do not reintroduce
-  Chinese into code. User-facing README prose is intentionally bilingual.
-- **Documentation Sync.** Whenever you add a feature, change architecture, or introduce a
-  configuration toggle (e.g. a new `.env` flag), you MUST evaluate whether `README.md`
-  needs updating to keep the user manual accurate.
-- Notable changes go in `CHANGELOG.md`; project state goes in `STATE.md`.
+  assertions. The repo went through a full migration off Chinese; do not reintroduce it.
+  (`README.md` prose is intentionally bilingual — that is not code.)
+- **Never read, commit, or fabricate the contents of `.env`, `context/`, `history/`, or
+  `logs/`.** These are the user's private notes, meeting transcripts, and secrets. They are
+  gitignored. Tests must build their own fixtures with `tmp_path` and must never depend on
+  real files there.
+- **`.env.example` is the tracked template.** Any new `.env` flag must be added to it in the
+  same change.
+- **Documentation Sync.** When you add a feature, change architecture, or introduce a
+  configuration toggle, you MUST evaluate whether `README.md` needs updating. Put project
+  state in `STATE.md` and notable changes in `CHANGELOG.md` — not in this file.
 
-## Architecture
+## Invariants that break the app if violated
 
-| File | Role |
-|---|---|
-| `src/app.py` | Streamlit UI, PIN auth, role routing, polling loop |
-| `src/global_state.py` | `GlobalState` singleton — owns both transcribers and the RAG worker thread |
-| `src/transcriber.py` | One audio device → VAD → NPU inference → buffer. Instantiated twice |
-| `src/dialogue_buffer.py` | Thread-safe transcript ring buffer + session archiving to `history/` |
-| `src/local_advisor.py` | Loads the vector index, cosine-similarity trigger matching |
-| `src/build_index.py` | Offline knowledge compiler (`.md`/`.txt` → pickled embeddings) |
+These are not style preferences. Each one exists because breaking it produced a real
+failure. Read the surrounding code before touching any of them.
 
-Audio flows as **two independent tracks**, never mixed: the hardware mic is the
-`Speaker (You)` role, and the BlackHole loopback is the `Participant` role. Each gets its
-own `Transcriber` instance with its own VAD state and queues.
+- **Serialize all NPU access.** Concurrent Metal calls from the two transcriber threads
+  crash the process. Every `mlx_whisper` call, including the warm-up call, must hold the
+  module-level lock in `transcriber.py`.
+- **Never block the audio callback.** It may do VAD and enqueue, nothing more. Whisper
+  inference runs on its own queue and thread specifically because running it inline dropped
+  frames.
+- **Match audio devices by name substring, never by index.** Device indices shift between
+  runs and between machines.
+- **Streamlit re-runs the entire script on every poll tick.** Anything expensive or
+  stateful must live behind the `GlobalState` singleton or a cache decorator, never at
+  module scope.
 
-## Gotchas
+## Verifying your work
 
-- **Two import conventions.** At runtime `app.py:19` appends `src/` to `sys.path`, so
-  modules import each other bare (`from global_state import ...`). Tests import with the
-  package prefix (`from src.dialogue_buffer import ...`) and need `PYTHONPATH` at the repo
-  root. Don't "fix" one to match the other without changing both.
-- **`NPU_LOCK` in `transcriber.py` is load-bearing.** Concurrent Metal access from the two
-  transcriber threads crashes the process. Every `mlx_whisper` call — including the
-  warm-up call in `__init__` — must hold it.
-- **Never block the audio callback.** `_audio_callback` only does VAD and enqueues.
-  Whisper inference lives on a separate `inference_queue` + thread precisely because
-  running it inline dropped frames. Keep that separation.
-- **`GlobalState` is a singleton behind `@st.cache_resource`.** Streamlit re-runs the whole
-  script on every poll tick, so module-level code executes constantly. Anything expensive
-  or stateful must sit behind the singleton or a cache decorator.
-- **Audio devices are matched by name substring**, not index — see
-  `Transcriber.find_device_index`. Device indices shift between runs, so never hardcode one.
-- **`context/` is gitignored.** The knowledge base is the user's private notes. Tests must
-  never depend on real files there; build fixtures with `tmp_path`.
-- **`build_index.py` chunks on double-newlines** and drops chunks of 10 characters or
-  fewer (`build_index.py:47`). Blank lines inside a Q&A block split it into separate
-  vectors and weaken matching.
-- **`MULTILINGUAL_MODE` is a compile-time flag only.** It is read in `build_index.py:18` to
-  pick the embedding model, and the choice is then baked into the pickle as `model_name`.
-  `local_advisor.py:40` always loads whatever the bundle recorded, so editing `.env` has
-  **no effect until you recompile the index**. Compiling non-English notes under the
-  English-only `all-MiniLM-L6-v2` yields an index that loads fine but never matches.
-- **`.env` is gitignored**; `.env.example` is the tracked template. Update both together.
+```bash
+bash run_tests.sh                              # regenerates FILEMAP.md, then runs tests
+PYTHONPATH="$PWD" .venv/bin/python -m pytest tests/unit -q   # ad-hoc; PYTHONPATH is required
+```
+
+Tests import with the `src.` prefix and need the repo root on `PYTHONPATH`. Runtime code
+does not: `app.py` appends `src/` to `sys.path`, so the modules import each other bare.
+Both conventions are load-bearing — do not align one to the other without changing both.
+
+Do not report tests as passing without having run them.

@@ -4,12 +4,23 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- `tools/gen_filemap.py` — generates `FILEMAP.md`, a mechanical inventory of the Python
+  surface (modules, classes, functions, line numbers) parsed from the AST using only the
+  standard library. Supports `--check` for CI or a pre-commit hook.
+- `.claude/settings.json` — a `PostToolUse` hook regenerating `FILEMAP.md` whenever an agent
+  edits a `.py` file. Together with the `run_tests.sh` and `setup_mac.sh` calls, this means
+  the map cannot silently rot the way a hand-maintained architecture table does.
+
 ### Changed
-- Split the single tracker file by purpose: `AGENTS.md` now holds only agent-facing working
-  instructions (commands, architecture, standards, gotchas), while project progress,
-  roadmap, and known issues moved to the new `STATE.md`. The file inherited its
-  state-tracker content from the original `CLAUDE.md`, which did not match what `AGENTS.md`
-  is conventionally for.
+- Restructured the agent-facing docs by purpose. The original `CLAUDE.md` was a Phase 6
+  progress tracker, and renaming it to `AGENTS.md` inherited that mismatch:
+  - `AGENTS.md` now contains only **boundaries** — hard rules, invariants that break the
+    app if violated, and pointers to the generated sources of truth. It no longer carries a
+    hand-written architecture table or `file:line` references, which were guaranteed to go
+    stale.
+  - `STATE.md` (new) holds project progress, roadmap, and known issues.
+  - `FILEMAP.md` (generated) answers "does this file/class/function exist, and where?"
 
 ## [0.0.1] — 2026-08-07
 

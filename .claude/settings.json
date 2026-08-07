@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath // empty' | { read -r f; case \"$f\" in *.py) python3 \"${CLAUDE_PROJECT_DIR:-$PWD}/tools/gen_filemap.py\" >/dev/null || true;; esac; }",
+            "statusMessage": "Regenerating FILEMAP.md",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

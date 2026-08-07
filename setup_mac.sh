@@ -64,6 +64,9 @@ echo "Upgrading pip and installing project dependencies..."
 python3 -m pip install --upgrade pip
 pip install -r requirements.txt
 
+echo "Regenerating the agent-facing file map (FILEMAP.md)..."
+python3 "$PROJECT_DIR/tools/gen_filemap.py"
+
 echo "=========================================="
 echo "✅ [Aegis Prompter] Deployment Complete!"
 echo "👉 Environment is ready. To begin, type 'source .venv/bin/activate' in this terminal."

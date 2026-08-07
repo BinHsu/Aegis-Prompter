@@ -14,11 +14,15 @@ if [ ! -f "$PYTHON_BIN" ]; then
 fi
 
 # 3. Ensure testing utilities are available
-echo "📦 [1/2] Checking and installing unit testing dependencies..."
+echo "📦 [1/3] Checking and installing unit testing dependencies..."
 "$PYTHON_BIN" -m pip install pytest pytest-mock -q
 
-# 4. Ignite green light tests (filtering environmental warnings like EOL, SSL, Deprecation)
-echo "🏗️ [2/2] Initiating Unit Tests and Mock Verifications..."
+# 4. Keep the generated file map in sync with the code (stdlib only, never hand-edited)
+echo "🗺️ [2/3] Regenerating FILEMAP.md from the current source tree..."
+"$PYTHON_BIN" "$PROJECT_ROOT/tools/gen_filemap.py"
+
+# 5. Ignite green light tests (filtering environmental warnings like EOL, SSL, Deprecation)
+echo "🏗️ [3/3] Initiating Unit Tests and Mock Verifications..."
 export PYTHONPATH="$PROJECT_ROOT"
 "$PYTHON_BIN" -m pytest "$PROJECT_ROOT/tests/unit" -v \
     -W ignore::DeprecationWarning \
