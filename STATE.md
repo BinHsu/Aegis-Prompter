@@ -123,6 +123,17 @@ Stated without implementation. Each item is something the product must do, or mu
 - **R24 — Start must be unavailable until warm-up is confirmed complete.**
 - **R25 — Capture must not begin before authentication** and an explicit operator action.
 
+## Advisor backends
+
+- **R28 — RAG and LLM are two independently configurable slots.** The operator may fill
+  neither, either, or both. Whatever is filled gets sent to; the app is a transport, not a
+  policy-maker about which backend is appropriate.
+- **R29 — Every response is labelled with the vendor that produced it.**
+- **R30 — Generated content is visibly marked as unverified**, distinctly from retrieved
+  pre-written content. Retrieved text is safe to read aloud; generated text is not.
+- **R31 — The operator supplies a host and a credential; the app sends and receives.** No
+  per-vendor configuration beyond that.
+
 ## Device selection and pre-flight
 
 - **R26 — Audio input is selectable from the web page**, in the manner of Zoom or Meet web:
@@ -223,6 +234,64 @@ Verified with Command Line Tools `clang` only — **no Xcode required**.
   claim that they are cached in the project folder and leaving `.hf_cache/` unused.
   `setup_mac.sh` does export `HF_HOME`, but only inside its own shell.
 
+## The advisor seam already exists, and so does its gate
+
+- **V22 — The cosine threshold *is* the intent judgement.** `local_advisor.py` computes a
+  similarity score and returns a hint only when `best_score >= THRESHOLD` (0.65), plus a
+  `< 10` character filter and a repeat-suppression check on `last_matched_idx`. So the current
+  design already sends every Participant utterance to RAG unconditionally and lets the score
+  decide. **No separate intent model exists or is needed** for the RAG path.
+- **V23 — A generative model has no equivalent threshold.** RAG returns `None` below 0.65; an
+  LLM produces output for any input, because that is what generative models do. Any gate on
+  the LLM path has to be built.
+- **V24 — There is one advice slot, so two backends overwrite each other.**
+  `dialogue_buffer.set_advice()` assigns a single `self.advice` string and `app.py` renders one
+  value. Local RAG returns in milliseconds, a remote LLM in seconds — so an LLM reply would
+  reliably replace an already-displayed RAG hint a beat later. Worse than showing nothing: the
+  speaker reads a safe pre-written answer, and it is swapped for generated text mid-glance.
+- **V25 — A pending state already exists.** `set_advice(advice, is_thinking=True)` updates the
+  display but deliberately skips the session log. Built for the Gemini-era slow advisor;
+  exactly the state an in-flight LLM call needs.
+- **V26 — The conversation buffer is bounded by construction.**
+  `DialogueBuffer(max_history=15)` evicts with `pop(0)` past 15 entries. Fifteen utterances of
+  meeting speech is roughly 1–3K tokens. **Context-window exhaustion is therefore not a
+  realistic failure mode** — the cap is a product decision, not an API-error-handling problem.
+- **V27 — The worker loop is synchronous and only ever reads the newest entry.**
+  `_local_rag_worker_loop` runs `while` with `time.sleep(0.3)` and calls `analyze_dialogue`
+  inline, reading only `full_dialogue[-1]`. A slow remote call stalls the loop, and utterances
+  arriving during the stall are skipped rather than queued — the loop coalesces to "the latest
+  utterance at the moment the previous call returned." Useful behaviour, but currently
+  accidental rather than designed.
+
+## Advisor backend interfaces
+
+- **V28 — OpenAI-compatible is the de facto standard for the LLM slot**:
+  `POST {base_url}/v1/chat/completions`, `Authorization: Bearer <key>`. Implemented by Ollama
+  (`:11434/v1`), LM Studio (`:1234/v1`), vLLM (`:8000/v1`), llama.cpp, LocalAI, and every cloud
+  provider. Local and remote differ only by URL.
+- **V29 — Qdrant's local mode exposes the same API surface as remote.**
+  `QdrantClient(path=...)` runs in-process on SQLite with no server;
+  `QdrantClient(url=..., api_key=...)` is the remote form. Documented for datasets up to
+  ~20,000 points, which is far above a hand-written knowledge base. **Adopting it is not a
+  performance win** — numpy dot product over a few hundred 384-dim vectors is already
+  microseconds. The reason is that one API covers local and remote, which is what makes R31
+  implementable.
+- **V30 — Qdrant Cloud Inference covers the embedding half, server-side.** Passing a `Document`
+  with `cloud_inference=True` has Qdrant embed the text itself. So embedding location follows
+  from which Qdrant is targeted — local mode uses local `sentence-transformers`, Cloud uses
+  Cloud Inference — and no third configuration knob is needed. Qdrant accepts
+  `Authorization: Bearer` as well as `api-key`, so one credential shape serves both slots.
+- **V31 — Anthropic's API fits neither slot.** It is `POST /v1/messages` with `x-api-key` +
+  `anthropic-version` headers, not OpenAI-shaped, and it has **no embeddings endpoint at all**.
+  Using Claude in the LLM slot requires either an OpenAI-compatible gateway or a dedicated
+  adapter.
+- **V32 — Context-overflow errors are not reliable across the target runtimes.** OpenAI proper
+  returns HTTP 400 `context_length_exceeded`. **Ollama silently truncates to `num_ctx`
+  (default 4096) and its OpenAI-compatible wrapper does not even forward `num_ctx`** — no error
+  is raised. vLLM currently returns a 400 where the spec calls for auto-truncation. So a local
+  backend can answer confidently from a silently truncated transcript, invisibly. The defence is
+  owning the bound locally (**V26**), not catching an error.
+
 ## The import graph is narrow
 
 - **V20** — The entire heavy import chain hangs off **one line**. `app.py:20` is the only
@@ -251,6 +320,9 @@ requirement it follows from.
 | Settings persistence (`.aegis_settings.json`) | Meet and Zoom web persist nothing: default plus override is sufficient. Also dissolves the device *name* vs *index* question. | R26 |
 | Archiving audio *in order to* diarize | The cleanup pass works from text. Audio retention stands on corroboration instead. | R14, R16 |
 | Deleting `.env` outright | The cache directory must stay user-choosable; large weights may not belong on the internal drive. `.env` survives as a machine-written file. | R18, R19 |
+| A separate local intent model to gate the LLM | The RAG score is already an intent judgement and costs microseconds; a second model would contend for the NPU that `201eeea` exists to unblock. | V22, V23 |
+| RAG backends other than Qdrant | Retrieval-as-a-service has no standard interface — Qdrant, Weaviate, Pinecone and Chroma each have their own API. One vendor beats an abstraction over four. | R28, R31 |
+| Relying on a context-overflow error code | Ollama truncates silently and does not forward `num_ctx`; vLLM errors where the spec says truncate. Own the bound locally instead. | V26, V32 |
 
 ---
 
@@ -264,7 +336,7 @@ cites the requirements it satisfies.
 Satisfies **R8, R10, R11**. Addresses **V1, V2, V3**.
 
 1. Default to `mlx-community/whisper-large-v3-turbo` (**V4**).
-2. Make `MULTILINGUAL_MODE` govern both layers, or split it — see 7.6.
+2. Make `MULTILINGUAL_MODE` govern both layers, or split it — see 7.4.
 3. Bias decoding toward Traditional Chinese with an `initial_prompt` (**V5**). No OpenCC in the
    live path — see *Decided and closed*.
 4. Re-measure latency: `turbo` is slower than `distil`, and two tracks share `NPU_LOCK`. Confirm
@@ -368,7 +440,7 @@ the three plan items below do not each grow their own UI:
 | Control | Kind | Default | From |
 |---|---|---|---|
 | Microphone | dropdown | system default | 7.3 / **R26** |
-| Retain dual-track audio | toggle | off | 7.6 / **R16** |
+| Retain dual-track audio | toggle | off | 7.7 / **R16** |
 | RAG advisor active | toggle | on | 7.4 (`ENABLE_LOCAL_RAG`) |
 | Active capture backend | **read-only** indicator | auto-detected | 7.2 / **R7** |
 | Input level meters | read-only | — | already built (`st.progress(rms)`) |
@@ -400,11 +472,79 @@ must be an environment variable because `huggingface_hub` reads it at import (**
 | `HF_HOME` | once per machine | `.env`, written by the app |
 | `ENABLE_LOCAL_RAG` | per session | UI toggle, default on |
 | audio backend | capability, not preference | auto-detected (7.2) |
-| `ARCHIVE_AUDIO` | per **meeting** | UI toggle, default off (7.6) |
+| `ARCHIVE_AUDIO` | per **meeting** | UI toggle, default off (7.7) |
 | `MULTILINGUAL_MODE` | spans build time and run time (**V2, V3**) | split: a `build_index.py` argument, plus a UI selector for ASR |
 | `PIP_CACHE_DIR` | during `pip install` only | `setup_mac.sh`, which already exports it |
 
-## 7.5 — Post-meeting cleanup script
+## 7.5 — Pluggable advisor backends (RAG via Qdrant, LLM via OpenAI-compatible)
+
+Satisfies **R28–R31**. Built on **V22–V32**.
+
+The existing seam is already the right shape: `global_state.py` constructs an advisor and calls
+`analyze_dialogue(text) -> str | None`. Formalize that into a `Protocol` plus a factory; the
+worker loop does not change.
+
+| Slot filled | Behaviour |
+|---|---|
+| Neither | `advisor = None` — already works today via `enable_rag` |
+| RAG only | Qdrant query; the score gates as it does now (**V22**) |
+| LLM only | Send unconditionally — see below |
+| Both | Three-band routing on the RAG score |
+
+**Three-band routing when both are filled.** The cosine score is a free, local, millisecond
+relevance signal, so it gates the LLM too:
+
+| Score | Meaning | Action |
+|---|---|---|
+| ≥ 0.65 | A prepared answer exists | Serve the RAG hint — fast, no hallucination risk |
+| 0.45 – 0.65 | Related subject, no exact match | **The LLM's value band** — send, with the near-miss chunks as grounding context |
+| < 0.45 | Off-topic (music, chatter, notification sounds) | Send nothing |
+
+This is where an unanticipated question in a known domain gets answered, and the near-miss
+chunks make it genuine retrieval-augmented generation rather than bare generation.
+
+**LLM-only: send unconditionally, and let the prompt be the threshold.** With no RAG score there
+is no gate, and the decision is to send every Participant utterance with the accumulated
+transcript so the model has maximum context awareness. Two things make that safe rather than
+reckless:
+
+- **The bound already exists** (**V26**) — `max_history=15` caps the transcript by construction,
+  so context exhaustion is not a realistic failure mode. **Do not raise `max_history` for the
+  LLM's benefit without measuring**: past ~4096 tokens an Ollama backend truncates silently
+  (**V32**) and the model will answer confidently from a transcript it never fully saw.
+- **The system prompt carries the threshold the model lacks** (**V23**). It must explicitly
+  permit returning nothing — without that instruction the prompter floods, because a generative
+  model produces output for every input.
+
+Required changes:
+
+1. **`analyze_dialogue` must return the score, not just the text.** Below-threshold and
+   repeat-suppressed cases currently discard it, and three-band routing needs it.
+2. **Resolve the single-slot collision** (**V24**) — separate fields per backend, or an explicit
+   merge policy. An LLM reply must not silently replace a displayed RAG hint. `is_thinking`
+   (**V25**) already models the in-flight state.
+3. **Take the remote call off the poll thread** (**V27**) with a timeout and single-flight
+   semantics. The loop's coalescing behaviour is desirable — make it deliberate.
+4. **Label by vendor, and mark generated content unverified** (**R29, R30**). `🛡️ [Aegis
+   Triggered]` and `⚡ [STAFF OVERRIDE]` exist; a third label needs to be visually distinct. This
+   is a safety boundary, not decoration — a hallucinated figure read aloud at an interpellation is
+   worse than no cue.
+
+Two migration traps in moving the index to Qdrant:
+
+- **Pin the collection's distance metric to `COSINE` at creation time.** The current `THRESHOLD =
+  0.65` is cosine similarity from `np.dot / norms`. Under `DOT` or `EUCLID` the returned score
+  means something entirely different — and the threshold fails **silently**, with no error.
+- **Store the embedding model's identity in the collection.** Qdrant validates vector
+  dimensionality, not model provenance. The pickle carried `bundle["model_name"]` and
+  `local_advisor.py` read it back; dropping the pickle **moves** this problem rather than solving
+  it. Querying with a different model of the same dimensionality returns confident nonsense.
+
+Open question: **where does the credential live?** It is per-machine, not per-meeting, so it
+belongs beside `HF_HOME` in the app-written `.env` — but that is plaintext on disk. Gitignored,
+but plaintext. macOS Keychain is the correct home and costs a platform binding.
+
+## 7.6 — Post-meeting cleanup script
 
 Satisfies **R9, R10, R12, R13, R14, R15**.
 
@@ -420,7 +560,7 @@ dropping residual Whisper hallucinations.
   carry a one-line notice that running it sends transcript content to Claude, since `history/`
   holds meeting records.
 
-## 7.6 — Optional dual-track audio retention
+## 7.7 — Optional dual-track audio retention
 
 Satisfies **R3, R16**; bounded by **R4**.
 
@@ -446,7 +586,7 @@ Constraints, ordered by how easily each silently ruins the feature:
 - **Lossless only** — lossy undermines evidentiary value. Python's stdlib `wave` module needs
   **no new dependency**; FLAC is a later size optimization.
 - **Pair filenames with the transcript** — `history/Meeting_<session_id>_mic.wav` and
-  `_system.wav` beside `Meeting_<session_id>.md`, so 7.5 can find them without guessing.
+  `_system.wav` beside `Meeting_<session_id>.md`, so 7.6 can find them without guessing.
 - **Record the precise session start time**, so a transcript timestamp converts to an offset
   into the WAV. Without it, "jump to this moment" — the point of corroboration — does not work.
 
