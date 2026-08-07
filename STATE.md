@@ -123,10 +123,14 @@ Stated without implementation. Each item is something the product must do, or mu
 - **R24 — Start must be unavailable until warm-up is confirmed complete.**
 - **R25 — Capture must not begin before authentication** and an explicit operator action.
 
-## Device selection
+## Device selection and pre-flight
 
 - **R26 — Audio input is selectable from the web page**, in the manner of Zoom or Meet web:
   a sensible default, freely overridable.
+- **R27 — Every per-meeting decision is made on one pre-Start panel.** The screen shown before
+  capture begins is the single place the operator chooses microphone, whether to retain audio,
+  and whether the RAG advisor is active — reviewed together, then committed by pressing Start.
+  No per-meeting choice lives anywhere else.
 
 ---
 
@@ -297,10 +301,9 @@ not a browser device picker. That is more useful than the Zoom/Meet model here �
 can retune the speaker's capture without touching the Mac.
 
 Scope shrinks because of **R1**: if system audio is "everything", there is no source to choose.
-
-- **Microphone dropdown** — the one genuinely useful control.
-- **Active backend indicator** — read-only, per 7.2 step 3.
-- No system-audio source dropdown. Two dropdowns became one.
+So this contributes a **microphone dropdown** and a read-only **active backend indicator** — not
+a screen of its own. Both live on the pre-flight panel defined in 7.4 (**R27**). Two dropdowns
+became one.
 
 The `st.progress(rms)` level meters already in `app.py` are exactly the meter Zoom shows beside
 its device picker, so the familiar UX needs no new visual work.
@@ -357,6 +360,27 @@ no-config → downloading → warming → ready
 Start is `disabled` until `ready` (**R24**), which also satisfies **R25**: capture cannot begin
 early because the control that begins it is not pressable.
 
+### The pre-flight panel
+
+Once `ready`, the operator sees one screen holding **every per-meeting decision** (**R27**), so
+the three plan items below do not each grow their own UI:
+
+| Control | Kind | Default | From |
+|---|---|---|---|
+| Microphone | dropdown | system default | 7.3 / **R26** |
+| Retain dual-track audio | toggle | off | 7.6 / **R16** |
+| RAG advisor active | toggle | on | 7.4 (`ENABLE_LOCAL_RAG`) |
+| Active capture backend | **read-only** indicator | auto-detected | 7.2 / **R7** |
+| Input level meters | read-only | — | already built (`st.progress(rms)`) |
+| **Start** | button | disabled until `ready` | **R24, R25** |
+
+Pressing Start **commits** these choices and opens the streams. They are fixed for the session;
+changing one means stopping and starting again. That keeps stream setup and the audio writer
+configured once, rather than being mutable mid-capture.
+
+Nothing here is persisted (see *Decided and closed*) — the panel is rebuilt from live enumeration
+and defaults on every launch.
+
 ### Warm eagerly, open streams lazily
 
 Fully lazy loading is the wrong correction — `turbo` is 1.61 GB across two `Transcriber`
@@ -400,9 +424,13 @@ dropping residual Whisper hallucinations.
 
 Satisfies **R3, R16**; bounded by **R4**.
 
-A **UI toggle, default off** — a per-meeting decision, on disk-space grounds and because
-recording carries consent expectations the operator should choose deliberately. `history/` is
-already gitignored.
+A **toggle on the pre-flight panel** (7.4, **R27**), **default off** — a per-meeting decision,
+committed when Start is pressed and fixed for the session. Off by default on disk-space grounds
+and because recording carries consent expectations the operator should choose deliberately.
+`history/` is already gitignored.
+
+Because the choice is known before the streams open, the writer thread is configured once at
+Start rather than having to be attachable to a running capture.
 
 Constraints, ordered by how easily each silently ruins the feature:
 
