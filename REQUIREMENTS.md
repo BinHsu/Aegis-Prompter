@@ -111,14 +111,23 @@ Stated without implementation. Each item is something the product must do, or mu
 
 - **R17 — The local web page is the control surface.** Configuration belongs there.
 - **R18 — The user must never hand-edit `.env`.**
-- **R19 — The model cache directory is user-specified**, not fixed by the project layout —
+- **R19 — Where weights are stored is the operator's choice**, not fixed by the project layout — see
+  **R48** for the shape that choice takes —
   the weights are large and may not belong on the internal drive.
 - **R20 — If configuration is absent, the web page asks for it.** No `.env`, or no cache path
   in it, must lead to a prompt rather than an error.
 - **R21 — Nothing needs to be downloaded before the first cold start.** Launching must not
   presuppose that models were already fetched.
-- **R22 — Reset means deleting `.env`**, by hand or by button. There must be no other
-  configuration state to clear.
+- **R22 — Reset means deleting `.env`**, by hand or by button, **and nothing else.** There must be no
+  other configuration state to clear, and the reset must not touch anything on disk that is not
+  configuration. Before deleting, it shows the paths that are about to stop being referenced — not so
+  they can be removed, but because after the form goes blank they are the only way back to data that
+  is still perfectly usable (**V47**).
+- **R47 — The application never deletes captured material or downloaded caches.** Transcripts, audio
+  archives and model weights are the operator's, and their removal is the operator's decision
+  (**R4**). This is not merely a default: no code path in the application deletes them, because the
+  directories holding them are operator-supplied strings (**R19**, **R44**) and a recursive delete
+  against a typed path is an unacceptable operation. The UI may *locate* them; it may not remove them.
 - **R23 — Setup progress must be visible**, including console output, while it happens.
 - **R24 — Start must be unavailable until warm-up is confirmed complete.**
 - **R25 — Capture must not begin before authentication** and an explicit operator action.
@@ -198,9 +207,25 @@ design detail left to whoever implements it.
   over plain HTTP (**V13**), so the transcript and the access code cross the network in the clear.
   Nothing may be rendered to a remote browser that is not already in the transcript, and the local
   page states plainly that remote viewing is unencrypted.
-- **R44 — The audio archive directory is operator-specified**, for the same reason as the model cache
+- **R44 — Retained audio is stored off the project tree**, for the same reason as the model cache
   (**R19**): at 48 kHz two tracks reach roughly 2.1 GB for a three-hour hearing, which may not belong
-  on the internal drive.
+  on the internal drive. Its location is derived from the storage root (**R48**) rather than typed
+  separately, and may be overridden when weights and recordings belong on different volumes.
+- **R48 — The operator chooses one storage root; the layout beneath it is fixed and owned by the
+  application.**
+
+  ```
+  <storage root>/AegisPrompter/
+  ├── models/     # HF_HOME — weights
+  └── audio/      # retained dual-track WAVs, unless overridden
+  ```
+
+  One field instead of two, and — more importantly — **the paths are reproducible.** Re-entering the
+  same root after a reset regenerates byte-identical paths, so an existing model cache is recognised
+  and reused rather than re-downloaded (**V47**). It also lets the settings form *report* what it
+  found — "existing cache detected, 3.4 GB, will be reused" — which turns re-entry from something the
+  operator must get exactly right into something the app confirms. A freely-typed cache path cannot
+  offer either property.
 
 ### Screens
 
@@ -219,8 +244,8 @@ it rather than restating it.
 
 | # | Field | Required | When absent |
 |---|---|---|---|
-| 1 | Model cache directory | **yes** | Nothing to download weights into — the one field that blocks everything |
-| 2 | Audio archive directory | only to retain audio | Retention unavailable (**R44**) |
+| 1 | Storage root | **yes** | Nothing to download weights into — the one field that blocks everything (**R48**) |
+| 2 | Audio archive override | no | Recordings go to `<root>/AegisPrompter/audio` (**R44**) |
 | 3 | Qdrant URL | no | Local mode; RAG still works (**V29**) |
 | 4 | Qdrant credential 🔒 | no | Local mode |
 | 5 | Embedding model name | no | Has a default |
@@ -263,9 +288,9 @@ side effect of another control.
 | LLM credential, LLM model name | LLM base URL is non-empty | — |
 | **LLM advisor** toggle | **hidden entirely** unless LLM base URL is configured | ⚠️ generated text is unverified — not safe to read aloud (**R30**) |
 | **RAG advisor** toggle | the index reports at least one chunk | — (the readiness line always shows chunk count and build date, armed or not — **V34**) |
-| **Retain dual-track audio** | an audio archive directory is configured (**R44**) | ⚠️ disk estimate for the expected meeting length, plus the reminder that recording carries consent expectations (**R4**). Because the switch is sticky, the warning appears when it is **turned on**, while the pre-flight panel shows the state it is already in on every subsequent run (**R46**) |
-| Model cache directory | always | 📁 folder chooser (**V45**) |
-| Audio archive directory | always | 📁 folder chooser (**V45**) |
+| **Retain dual-track audio** | always — the archive path is derived from the storage root, so it cannot be unconfigured (**R48**) | ⚠️ disk estimate for the expected meeting length, plus the reminder that recording carries consent expectations (**R4**). Because the switch is sticky, the warning appears when it is **turned on**, while the pre-flight panel shows the state it is already in on every subsequent run (**R46**) |
+| Storage root | always | 📁 folder chooser (**V45**), then a report of what was found beneath it — existing cache size, existing recordings — before anything is written (**R48**) |
+| Audio archive override | always | 📁 folder chooser (**V45**) |
 | ASR model | always | ⚠️ returns to `warming` for minutes, possibly preceded by a download (**V33**) |
 | Embedding model name | always | ⚠️ the existing index was built with a different model and must be rebuilt (**V36**) |
 | Qdrant URL / LLM base URL pointing off-machine | always | ⚠️ queries and credential leave this machine (**R4** — the operator's call, but an informed one) |
@@ -329,6 +354,30 @@ numbers. Treat every figure here as a reason to test, not as a result.
 - **V44 — `mlx-qwen3-asr` is a community reimplementation, not a vendor port.** Apache 2.0 over
   official weights, single maintainer. For a product whose premise is running offline forever, that is
   a supply-chain consideration to decide deliberately rather than discover later.
+
+## The application owns `.env`, which makes two mechanics load-bearing
+
+- **V46 — A settings save rewrites the whole file, so it has to be atomic.** The form is the only
+  writer (**R32**), and Streamlit re-executes the script on every interaction, so a crash or a rerun
+  landing mid-write leaves a truncated `.env` that reads as a half-configured machine — and looks like
+  operator error. Write to a temporary file in the same directory and `os.replace()` it, which is
+  atomic on the same filesystem. Not measured; this is the standard mechanic, and the failure it
+  prevents is silent.
+- **V47 — Deleting `.env` does not cost the weights.** `huggingface_hub` stores blobs
+  content-addressed under `models--<org>--<repo>/blobs/<sha>` and resolves a download by comparing the
+  remote ETag against what is present, so an existing cache is reused and nothing is fetched twice.
+  Read from the library's cache design, not measured here.
+
+  Two failure modes are eliminated by two different mechanisms, and both are needed:
+
+  | Failure | Removed by |
+  |---|---|
+  | Same path, redundant fetch of identical weights | content addressing — this constraint |
+  | *Different* path after a reset, so a complete cache on the same machine is invisible and re-downloaded in full | the fixed layout under a re-entered root (**R48**) |
+
+  A useful consequence: switching ASR models back and forth costs one download each, ever. Both sets
+  of weights coexist in the cache and neither is refetched. That answers the disk half of **V33**'s
+  open question; the memory half — whether `mlx_whisper` holds two models resident — remains untested.
 
 ## The web framework has no folder picker
 
@@ -527,6 +576,8 @@ requirement it follows from.
 | Gemma 4 in the live ASR path | Audio is silently dropped on the Python MLX path this project runs on, BF16 needs ~24 GB and quantization degrades it, and no WER was ever published. Its diarization is attractive but belongs to the offline cleanup pass, not the live path. | R11, V38 |
 | Parakeet TDT v3 | Fastest open model measured, and it does not support Chinese. | R8, V43 |
 | Choosing the ASR model from published benchmarks | Every leaderboard measures word error on speech; none measures whether music becomes an utterance, which is the failure this product cannot absorb. | R11, R37, V41 |
+| The LLM system prompt as an editable settings field | It carries the instruction that permits returning nothing (**V23**), so an edit that removes that clause converts the advisor into a flooder — a safety boundary, not a preference. **R31** also caps per-backend configuration at a host and a credential. Domain vocabulary belongs in the knowledge base instead. | R17, R31, V23 |
+| Reset deleting weights or recordings as well as `.env` | Weights are reproducible and recordings are not, so they must not share a button. Deletion is the file owner's call (**R4**), and both directories are operator-supplied strings — a recursive delete against a typed path is unacceptable. Reset lists what it orphans instead. | R4, R22, R47, V47 |
 | Relying on a context-overflow error code | Ollama truncates silently and does not forward `num_ctx`; vLLM errors where the spec says truncate. Own the bound locally instead. | V26, V32 |
 | macOS Keychain for credentials | Plaintext `.env` plus UI masking is consistent with a product that already stores full meeting transcripts in plaintext under `history/` — the credential is not the weakest link, and a platform binding buys little. Masking still earns its place against shoulder-surfing and screen sharing. | R32 |
 | Three-state sentinel handling for masked credential fields | Unnecessary once the settings form renders **only locally** (**R34**): the field always carries the real value, so writing it back is idempotent. There is no way to save a row of asterisks over a real key. | R32, R34 |

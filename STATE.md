@@ -156,7 +156,17 @@ streamlit run src/app.py
 ```
 
 Reset is deleting `.env` (**R22**) — the form goes blank again. The operator never opens it in an
-editor (**R18**).
+editor (**R18**). Three mechanics carry that:
+
+- **The reset button deletes `.env` and touches nothing else** (**R47**). Before deleting it lists the
+  paths that are about to go unreferenced, with sizes — not to offer removal, but because the operator
+  is about to lose the only on-screen record of where their data is.
+- **Re-entering the same storage root restores everything** (**R48**, **V47**): the layout beneath it
+  is fixed, so the derived cache path is byte-identical and the weights are recognised, not refetched.
+  The form reports what it found under the root before writing anything.
+- **Saving the form is an atomic rewrite** (**V46**) — temporary file plus `os.replace()`. Streamlit
+  reruns the script constantly, and a torn `.env` reads as a half-configured machine rather than as an
+  interrupted write.
 
 ### The settings form
 
@@ -212,7 +222,7 @@ because `app.py:27` auto-starts; removing that auto-start creates this state.
 
 | File | Change |
 |---|---|
-| `src/bootstrap.py` (new) | Zero project imports — stdlib plus `dotenv` only. Reads and writes `.env`, resolves the cache directory, sets `os.environ["HF_HOME"]` *before* anything heavy loads, checks whether weights are present, owns the readiness state machine. |
+| `src/bootstrap.py` (new) | Zero project imports — stdlib plus `dotenv` only. Reads and writes `.env` atomically (**V46**), resolves the storage root and derives the fixed layout beneath it (**R48**), sets `os.environ["HF_HOME"]` *before* anything heavy loads, reports what already exists under the root, owns the readiness state machine. |
 | `.env.example` | **Regenerate to match the persisted inventory** — the nine settings fields plus `ARCHIVE_AUDIO`, with `MULTILINGUAL_MODE` removed. `AGENTS.md` makes this obligatory in the same change as the flag, and the template is currently a snapshot of the pre-Phase-7 scheme. |
 | `app.py` | Move `from global_state import ...` out of module scope into a function called only once configuration exists; drop the `app.py:27` auto-start (**V18**); add the settings form, the `is_local` gate, the waiting state, and Start gating. |
 | `transcriber.py` | **Untouched.** |
@@ -324,6 +334,11 @@ reckless:
 - **The system prompt carries the threshold the model lacks** (**V23**). It must explicitly
   permit returning nothing — without that instruction the prompter floods, because a generative
   model produces output for every input.
+- **The prompt lives in source, not in the settings form.** It encodes a safety boundary rather than a
+  preference, and **R31** caps per-backend configuration at a host and a credential. Making it
+  editable would let the clause that permits returning nothing be deleted, which is the one edit that
+  turns the advisor into a flooder — see *Decided and closed*. Domain vocabulary belongs in the
+  knowledge base, which is where **V40**'s context biasing would draw from anyway.
 
 Scale to budget for: a two-hour meeting with an utterance every few seconds is **hundreds to low
 thousands of calls**, bounded by **V27**'s coalescing rather than by utterance count.
