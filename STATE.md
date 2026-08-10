@@ -45,69 +45,26 @@ with an English-only codebase.
 Ordered so each step is independently shippable and the riskiest work lands last. Every item
 cites the requirements it satisfies.
 
-**2026-08-10 review reordered the plan.** Microphone selection and retention both need the
-pre-flight panel; the cleanup script should see retention's filename contract; the 48 kHz capture
-path must exist before ASR latency / false-trigger numbers are treated as final. Plan numbers
-below are the new order — older commits that say "7.4" for configuration mean the *configuration
-work*, not today's section number.
+**Reordered twice on 2026-08-10.** First pass: microphone selection and retention both need the
+pre-flight panel, the cleanup script should see retention's filename contract, and the 48 kHz
+capture path must exist before ASR latency and false-trigger numbers are treated as final.
 
-## 7.1 — ASR bake-off, then a default — 🔴 do first
+Second pass moved **configuration ahead of the ASR bake-off**, for one concrete reason: the bake-off
+downloads 1.6–3.4 GB, and `HF_HOME` does not work yet (**V19**). Running it first lands weights in
+`~/.cache/huggingface`, and once a storage root is configured the derived path under **R48** points
+elsewhere — so the fixed layout that exists to make re-download impossible (**V47**) would be
+defeated by the plan's own first step. Configuration also clears three known issues and builds the
+pre-flight panel every later item assumes.
 
-Satisfies **R8, R10, R11, R37**. Addresses **V1, V2, V3**; candidates and their traps are **V4, V5,
-V38–V44**.
+The bake-off has **two halves and they unblock at different times**: choosing a provisional default
+needs only configuration, while *closing* it needs the 48 kHz path from the process-tap item. Its
+long-lead task — recording audio fixtures — depends on neither and can start immediately, in
+parallel with configuration.
 
-This item previously named a winner before the field had been examined. **V38–V44**, read on
-2026-08-10, changed the picture: a stronger candidate exists (**V39**), it brings a capability the
-plan never considered (**V40**), and it brings a specific regression against **R37** (**V41**).
-**R11** asks for a deliberate choice, so this item measures rather than asserts.
+Plan numbers are execution order and are renumbered whenever it changes. Older commits saying
+"7.4" for configuration mean the *configuration work*, not today's section number.
 
-| Candidate | Why it is here | Why it might lose |
-|---|---|---|
-| `whisper-large-v3-turbo` | Incumbent path, `mlx_whisper` already wired in, has `no_speech_threshold` | Weaker accuracy; script not guaranteed (**V5**) |
-| Qwen3-ASR 1.7B (MLX) | Better on every published number; trained-in context biasing (**V39, V40**) | No no-speech gate and transcribes music (**V41**); community port (**V44**) |
-| Qwen3-ASR 0.6B (MLX) | Faster again, which matters under a shared `NPU_LOCK` | Accuracy cost |
-
-Measure in this order. **The first one decides; it is not a tie-breaker:**
-
-1. **False-trigger rate on non-speech** (**R37**) — music, notification chimes and keyboard noise,
-   counting how many lines reach the buffer as `Participant`. No published benchmark covers this, and
-   it is the failure that fires a cue at the worst possible moment.
-2. **Code-switching** on real bilingual audio (**R8**), and which script the Chinese arrives in
-   (**R10**, **V42**).
-3. **Latency with both tracks running**, since the two instances share `NPU_LOCK`. Confirm
-   `audio_queue` does not resume dropping frames — that regression was only fixed in `201eeea`.
-4. **Whether context biasing earns its place** (**V40**) — the same terms, with and without.
-
-Then, and only then:
-
-1. Write the winner in as the default and record the measurements as new constraints.
-2. **Delete `MULTILINGUAL_MODE`.** Every candidate is multilingual unconditionally, so the ASR half of
-   the flag has no meaning; the embedding half becomes a `build_index.py` argument recorded in the
-   index. The runtime environment variable disappears entirely.
-3. **Rebuild the anti-hallucination defence for whichever model wins.** Whisper's ghost strings and an
-   LLM-based model's repetition loops are different failures, so the blacklist at
-   `transcriber.py:163` cannot simply carry over. If the winner has no `no_speech_threshold`
-   equivalent (**V41**), **R37** has to be met upstream — stricter VAD, or an energy/duration gate
-   ahead of `inference_queue`.
-
-**Blocked on something this repo does not have: audio fixtures.** `history/` holds real meetings and
-is off limits, so the test material has to be recorded deliberately for the purpose. That recording is
-the first task of this item, not an afterthought.
-
-**Provisional until the 48 kHz path lands.** Today's `transcriber.py` opens streams at 16 kHz.
-Retention and the process tap make 48 kHz + software resample mandatory (**V12**, **V7**, decided
-in `docs/decisions/0001-audio-archive-sample-rate.md`). A winner chosen only on the 16 kHz path is
-allowed as a *default to wire in*, but **R37** false-trigger rate and dual-track latency must be
-re-measured on the production resample path before the bake-off is closed — otherwise the numbers
-describe a pipeline the product is about to abandon.
-
-Already favourable: code-switching needs no architectural change, because each VAD segment is a
-separate call with no language argument, so language is auto-detected per chunk. Intra-*sentence*
-code-switching stays weak in every candidate.
-
-No OpenCC in the live path regardless of winner — see *Decided and closed*.
-
-## 7.2 — Configuration and startup: one new file plus `app.py`
+## 7.1 — Configuration and startup: one new file plus `app.py` — 🔴 do first
 
 Satisfies **R17–R25, R32–R35, R38–R41, R43, R46–R48**. Addresses **V18, V19, V37, V46, V47**;
 enabled by **V20**; constrained by **V21, V33, V45**.
@@ -212,6 +169,7 @@ because `app.py:27` auto-starts; removing that auto-start creates this state.
 |---|---|
 | `src/bootstrap.py` (new) | Zero project imports — stdlib plus `dotenv` only. Reads and writes `.env` atomically (**V46**), resolves the storage root and derives the fixed layout beneath it (**R48**), sets `os.environ["HF_HOME"]` *before* anything heavy loads, reports what already exists under the root, owns the readiness state machine and download-progress surface for **R23**. |
 | `.env.example` | **Regenerate to match the persisted inventory** — the nine settings keys plus `ARCHIVE_AUDIO`, with `MULTILINGUAL_MODE` removed. `AGENTS.md` makes this obligatory in the same change as the flag, and the template is currently a snapshot of the pre-Phase-7 scheme. |
+| `README.md` | **Rewrite the setup section.** It currently instructs the operator to set `MULTILINGUAL_MODE` by hand (lines 105 and 132) and documents a `.env` the operator is no longer allowed to edit (**R18**). The new flow is `setup_mac.sh` → open the page → fill the storage root → the app downloads. `AGENTS.md`'s documentation-sync rule makes this part of the item, not follow-up work. |
 | `app.py` | Move `from global_state import ...` out of module scope into a function called only once configuration exists; drop the `app.py:27` auto-start (**V18**); add Configure, the `is_local` gate, the waiting state, Pre-flight shell, and Start gating. |
 | `transcriber.py` | **Untouched** by this item. |
 | `local_advisor.py` | **Untouched** by this item (advisor backends change it later). |
@@ -295,6 +253,62 @@ back rather than the request being quietly forgotten.
 | `MULTILINGUAL_MODE` | — | **deleted** (ASR bake-off item) |
 | `PIP_CACHE_DIR` | during `pip install` only | `setup_mac.sh`, which already exports it |
 
+## 7.2 — ASR bake-off, then a default
+
+Satisfies **R8, R10, R11, R37**. Addresses **V1, V2, V3**; candidates and their traps are **V4, V5,
+V38–V44**.
+
+This item previously named a winner before the field had been examined. **V38–V44**, read on
+2026-08-10, changed the picture: a stronger candidate exists (**V39**), it brings a capability the
+plan never considered (**V40**), and it brings a specific regression against **R37** (**V41**).
+**R11** asks for a deliberate choice, so this item measures rather than asserts.
+
+| Candidate | Why it is here | Why it might lose |
+|---|---|---|
+| `whisper-large-v3-turbo` | Incumbent path, `mlx_whisper` already wired in, has `no_speech_threshold` | Weaker accuracy; script not guaranteed (**V5**) |
+| Qwen3-ASR 1.7B (MLX) | Better on every published number; trained-in context biasing (**V39, V40**) | No no-speech gate and transcribes music (**V41**); community port (**V44**) |
+| Qwen3-ASR 0.6B (MLX) | Faster again, which matters under a shared `NPU_LOCK` | Accuracy cost |
+
+Measure in this order. **The first one decides; it is not a tie-breaker:**
+
+1. **False-trigger rate on non-speech** (**R37**) — music, notification chimes and keyboard noise,
+   counting how many lines reach the buffer as `Participant`. No published benchmark covers this, and
+   it is the failure that fires a cue at the worst possible moment.
+2. **Code-switching** on real bilingual audio (**R8**), and which script the Chinese arrives in
+   (**R10**, **V42**).
+3. **Latency with both tracks running**, since the two instances share `NPU_LOCK`. Confirm
+   `audio_queue` does not resume dropping frames — that regression was only fixed in `201eeea`.
+4. **Whether context biasing earns its place** (**V40**) — the same terms, with and without.
+
+Then, and only then:
+
+1. Write the winner in as the default and record the measurements as new constraints.
+2. **Delete `MULTILINGUAL_MODE`.** Every candidate is multilingual unconditionally, so the ASR half of
+   the flag has no meaning; the embedding half becomes a `build_index.py` argument recorded in the
+   index. The runtime environment variable disappears entirely.
+3. **Rebuild the anti-hallucination defence for whichever model wins.** Whisper's ghost strings and an
+   LLM-based model's repetition loops are different failures, so the blacklist at
+   `transcriber.py:163` cannot simply carry over. If the winner has no `no_speech_threshold`
+   equivalent (**V41**), **R37** has to be met upstream — stricter VAD, or an energy/duration gate
+   ahead of `inference_queue`.
+
+**Blocked on something this repo does not have: audio fixtures.** `history/` holds real meetings and
+is off limits, so the test material has to be recorded deliberately for the purpose. That recording is
+the first task of this item, not an afterthought.
+
+**Provisional until the 48 kHz path lands.** Today's `transcriber.py` opens streams at 16 kHz.
+Retention and the process tap make 48 kHz + software resample mandatory (**V12**, **V7**, decided
+in `docs/decisions/0001-audio-archive-sample-rate.md`). A winner chosen only on the 16 kHz path is
+allowed as a *default to wire in*, but **R37** false-trigger rate and dual-track latency must be
+re-measured on the production resample path before the bake-off is closed — otherwise the numbers
+describe a pipeline the product is about to abandon.
+
+Already favourable: code-switching needs no architectural change, because each VAD segment is a
+separate call with no language argument, so language is auto-detected per chunk. Intra-*sentence*
+code-switching stays weak in every candidate.
+
+No OpenCC in the live path regardless of winner — see *Decided and closed*.
+
 ## 7.3 — Microphone selection in the web UI
 
 Satisfies **R26**. Settled by **V13, V14**: this remote-controls the *host Mac's* devices; it is
@@ -332,6 +346,18 @@ Satisfies **R1, R2, R5, R6, R7**. Built on **V6–V11**; **V12** is the first un
 4. **Auto-detect rather than configure**: use the tap when the OS supports it and the device
    appears, otherwise BlackHole. Surface which is active on the pre-flight panel — this is a
    capability, not a preference (**R7**).
+
+   ⚠️ **The obvious implementation is circular.** The tap's aggregate device exists only while the
+   helper process runs (**V9**), and the helper must not run before Start, because creating a tap
+   *is* capture (**R25**). But the pre-flight panel has to show the active backend **before** Start.
+   So the indicator cannot be derived from device enumeration. Derive it from **capability** instead
+   — OS version ≥ 14.2 (**V6**), helper binary present and executable — and treat a helper that then
+   fails to produce its device at Start as a **runtime failure with a visible message** (**R39**),
+   falling back to BlackHole for that session rather than silently capturing nothing.
+
+   The same circularity applies to the microphone dropdown: it enumerates real input devices before
+   Start, so the tap device will never be among them. That is correct, not a bug — the tap is the
+   *Participant* source and is never operator-selectable (**R1**, **R5**).
 5. Prove it in real meetings, **then** make the tap the default (**R7**).
 6. Keep the BlackHole fallback permanently for macOS older than 14.2 (**R6**).
 
@@ -536,6 +562,35 @@ dropping residual Whisper hallucinations.
 
 ---
 
+## 🧪 Verification — what gets a test, and what cannot
+
+The plan adds a lot of logic that is pure and cheap to test, and the repo currently has eight tests
+across two files. Naming the testable surface here stops it from being decided by whoever is tired
+at the end of an item.
+
+Tests build their own fixtures with `tmp_path` and never read `context/`, `history/` or `logs/` —
+`AGENTS.md` makes that a hard rule, and it is also why none of the below needs a real meeting.
+
+| Surface | Cases that matter |
+|---|---|
+| `bootstrap` — `.env` round-trip | Write the form, read it back, get identical values including empty strings and credentials containing `=` and `#`. A blank field must survive as blank, not as the string `"None"` (**R32**) |
+| `bootstrap` — atomic write (**V46**) | Simulate a failure between temp-write and replace; the original `.env` must still be intact and parseable |
+| `bootstrap` — path derivation (**R48**) | One storage root produces `<root>/AegisPrompter/{models,audio}`; trailing slashes, `~`, and a relative path all normalise identically, because "the same root re-entered" must mean byte-identical derived paths |
+| `bootstrap` — absent configuration (**R20**) | No `.env`, empty `.env`, and `.env` missing the required key each yield a blank form, never an exception |
+| `is_local` (**V37**) | Table-driven over the `Host` header: `localhost`, `127.0.0.1`, a LAN IP, **empty**, and a raising header accessor. Only the first two may return local — the empty and raising cases are today's fail-open bugs |
+| Advisor factory (**R28**) | Neither slot / RAG only / LLM only / both configured each select the documented behaviour |
+| Three-band routing (**V22**, **V23**) | Scores `0.449`, `0.45`, `0.649`, `0.65`, `0.651` — the two band edges are the whole logic, and an off-by-one comparison here either floods the speaker or silently disables the LLM band |
+| Retention naming (**R44**, **R45**) | `session_id` plus an archive directory resolves the `_mic`/`_system` pair; the session header records retention status and path |
+
+**What unit tests cannot cover, so nobody should pretend otherwise:** NPU warm-up and its
+serialization under `NPU_LOCK`, real device enumeration, the Core Audio tap, whether PortAudio
+resamples (**V12**), whether a native folder dialog blocks Streamlit's rerun (**V45**), and the
+false-trigger rate on non-speech (**R37**). Those are measurements on hardware, and each is already
+named as such in the item that needs it. A mocked test asserting one of them would be worse than no
+test, because it would report green about something never exercised.
+
+---
+
 ## 🔓 Open decisions
 
 Resolve before the cited work is implemented. These are blockers, not polish.
@@ -597,3 +652,7 @@ Resolve before the cited work is implemented. These are blockers, not polish.
 - **`.env.example` is pre-Phase-7** — still documents `MULTILINGUAL_MODE` and project-local
   `HF_HOME=./.hf_cache`, which contradicts **R48** and **V19**. Regenerated with the configuration
   item; until then the template teaches the broken layout.
+- **`README.md` teaches a workflow the plan removes** — hand-editing `.env` and setting
+  `MULTILINGUAL_MODE` (lines 105, 132), both contradicting **R18**. It is also the only document a
+  new operator reads, so it is the most expensive one to leave stale. Rewritten with the
+  configuration item.
