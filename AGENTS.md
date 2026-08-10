@@ -25,6 +25,12 @@ decision, and it lives in `REQUIREMENTS.md`, where a large deletion is a warning
 routine tidying. Reference direction is one-way: the plan cites `R*`/`V*`, never the reverse.
 `tools/check_state.py` enforces both.
 
+**Both files are edited from outside this repo's normal loop.** External reviewers revise
+`REQUIREMENTS.md` and `STATE.md` and commit directly, so their contents may have changed since any
+previous session. **Re-read both at the start of a session and run `python tools/check_state.py`
+before acting on them — never work from remembered content.** `git log --oneline REQUIREMENTS.md
+STATE.md` shows what moved and when.
+
 `FILEMAP.md` is **generated from the AST** by `tools/gen_filemap.py`. Never hand-edit it.
 
 Three things regenerate it automatically: the `PostToolUse` hook in `.claude/settings.json`

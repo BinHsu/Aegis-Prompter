@@ -13,7 +13,7 @@ rather than trusting this file:
 python tools/gen_filemap.py
 ```
 
-**9 Python files.**
+**10 Python files.**
 
 ## `src/`
 
@@ -83,6 +83,14 @@ python tools/gen_filemap.py
 - `test_buffer_concurrency()` (L75)
 
 ## `tools/`
+
+### `tools/check_state.py` — 128 lines
+
+Checks that the requirement documents still hold together.
+
+- `read()` (L33)
+- `decision_records()` (L38)
+- `main()` (L47)
 
 ### `tools/gen_filemap.py` — 152 lines
 
