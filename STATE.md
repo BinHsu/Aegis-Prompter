@@ -61,94 +61,38 @@ needs only configuration, while *closing* it needs the 48 kHz path from the proc
 long-lead task — recording audio fixtures — depends on neither and can start immediately, in
 parallel with configuration.
 
-**A third pass added `7.0`.** An unmerged branch (**V49**) turns out to already implement parts of the
-ASR, retention and cleanup items. It has to be evaluated before those are built, or the choice between
-adopting and re-deriving gets made by accident. It is numbered `7.0` so no existing section number
-moves again.
+**A third pass added `7.0`**, to evaluate an unmerged branch (**V49**) that already implements parts of
+the ASR, retention and cleanup items. **That item is now done** — see below — and the pieces it
+released are folded into the items that inherit them.
 
 Plan numbers are execution order and are renumbered whenever it changes. Older commits saying
 "7.4" for configuration mean the *configuration work*, not today's section number.
 
-## 7.0 — Evaluate the unmerged streaming branch — 🔴 do this first
+## 7.0 — Evaluate the unmerged streaming branch — ✅ done 2026-08-10
 
-Addresses **V49**. Gates nothing formally, but its outcome can change the shape of the ASR bake-off,
-the retention item and the cleanup item, so doing it after them means either re-deriving work that
-exists or discarding it without having looked.
+Addressed **V49**. Delivered `docs/decisions/0006`, which sorts every piece of
+`origin/feat/streaming-transcriber` into adopt / adopt-after-rework / re-derive / discard. **Read that
+record, not this summary**, before touching the ASR, retention or cleanup items.
 
-Numbered `7.0` rather than inserted as `7.1` so every existing section number and cross-reference in
-this file stays valid.
+The branch was run in an isolated worktree with its own virtualenv. **Its suite is 60 tests and all 60
+pass** — not the "roughly 29" **V49** recorded — so it is a source of code, not only of ideas. Nothing
+was merged, rebased or cherry-picked; that work belongs to the items below.
 
-**This is an evaluation, not a rescue.** The goal is a decision per piece of that branch, not a
-working branch. Do not fix it, do not rebase it, do not merge it wholesale — it predates every Phase 7
-requirement, and its own `CLAUDE.md` predates the `AGENTS.md` split, so a docs merge would fight.
+What the evaluation changed, beyond the corrections now folded into **V49** and the new **V50**:
 
-### Step 1 — isolate it
+- **One piece is adoptable as-is**: the whole-utterance hallucination filter. `main` still matches the
+  blacklist as a *substring*, so real speech containing "謝謝" or "thank you" is destroyed — now listed
+  under Known Issues, because it is a `main` bug independent of the branch.
+- **The retention item inherits a nearly complete implementation** with four named contradictions,
+  which is a better starting position than this plan assumed.
+- **The cleanup item's premise is reopened.** The branch summarises locally with `mlx-lm`; this plan
+  specifies headless Claude. Recorded as an open decision below rather than settled here.
+- **Two pieces are discarded outright** — the unsignalled lossy ring buffer and the `atexit` detached
+  summary spawn — with reasons in the record so they are not rediscovered as novelties.
 
-```bash
-git worktree add /tmp/aegis-eval origin/feat/streaming-transcriber
-```
+**The remote branch may now be deleted**; `0006` is the preserved copy of what it knew.
 
-A worktree, because `main` must stay untouched and switching branches in place would swap `src/` under
-a running Streamlit. The branch changes `requirements.txt` (Silero VAD, `mlx-lm`), so it needs **its own
-virtualenv inside the worktree** — installing those into `.venv` would silently change what `main`
-resolves at import time, which is the kind of contamination that gets discovered a week later.
-
-### Step 2 — does it stand up on its own?
-
-Run its suite and report the real number, not the number its commit message claims:
-
-```bash
-cd /tmp/aegis-eval && PYTHONPATH="$PWD" .venv-eval/bin/python -m pytest tests/unit -q
-```
-
-If the suite fails, stop and report — a branch that cannot pass its own tests is a source of ideas, not
-of code.
-
-### Step 3 — separate what can be checked now from what needs hardware
-
-The distinction matters because the second group cannot be settled without the audio fixtures the ASR
-item is already waiting on, and pretending otherwise produces confident nonsense.
-
-| Claim | Checkable now, how | Verdict without fixtures |
-|---|---|---|
-| Hallucination filter is substring→whole-utterance | Read the diff, run its boundary tests. `main` still has the substring bug at `transcriber.py:163` | **Decidable** |
-| WAV writing stays off the audio callback | Read the callback and the writer thread; the project invariant is absolute | **Decidable** |
-| WAVs are 16 kHz under `recordings/<session_id>/` | Read it. Conflicts with `docs/decisions/0001` (48 kHz) and **R48** (fixed layout under a storage root) | **Decidable — and it is a conflict** |
-| `.env` keys `WHISPER_MODEL` / `WHISPER_LANGUAGE` / `TRANSCRIBE_MODE` | Compare against the nine-key inventory (**R32**, **R48**) | **Decidable — needs renaming or absorbing** |
-| `retranscribe.py` merges per-track WAVs correctly | Synthesise two short WAVs with `tmp_path` and assert ordering and labels | **Decidable** |
-| Nothing starts capture before Start (**R25**) | Read its `app.py` and `global_state.py` changes against **V18** | **Decidable** |
-| Silero VAD reduces false triggers on music (**R37**) | — | **Blocked on fixtures** |
-| `turbo` + bilingual `initial_prompt` improves code-switching (**R8**, **R10**) | — | **Blocked on fixtures** |
-| Silero VAD ≈0.3% of decode cost | — | **Blocked** — adopt as a `V*` only after re-measuring here |
-| `NPU_LOCK` gains nothing to remove | — | **Blocked** — but it agrees with the existing invariant, so nothing depends on settling it |
-
-### Step 4 — test it against the requirements, not against taste
-
-The question is never "is this good code". It is "does this violate something". Walk the branch against
-**R25** (capture before Start), **R32**/**R48** (`.env` inventory and storage layout), **R37**
-(non-speech), `docs/decisions/0001` (48 kHz), the four invariants in `AGENTS.md`, and the English-only
-rule. A bilingual `initial_prompt` is *content*, not interface, so it does not breach **R38** — see
-`docs/decisions/0003`.
-
-### Step 5 — the deliverable is a decision record, per piece
-
-`docs/decisions/0006`, sorting every piece into exactly one bucket with a reason:
-
-| Bucket | Meaning |
-|---|---|
-| **Adopt now** | Cherry-pick onto `main` as its own commit, with a test |
-| **Adopt after rework** | The idea survives, the implementation contradicts a requirement — name which one |
-| **Re-derive under Phase 7** | Keep the insight, write it fresh where the branch's shape no longer fits |
-| **Discard** | With the reason, so it is not rediscovered as a novelty in three months |
-
-Anything reported-but-unmeasured becomes a `V*` **only after re-measurement**, marked with its own
-date. Copying its benchmark numbers in as verified would import a claim as a fact — the specific
-failure `V49` exists to flag.
-
-**Do not delete the remote branch until `0006` exists.** The record is what preserves the knowledge;
-until then the branch is the only copy.
-
-## 7.1 — Configuration and startup: one new file plus `app.py` — 🔴 do after 7.0
+## 7.1 — Configuration and startup: one new file plus `app.py` — 🔴 do this first
 
 Satisfies **R17–R25, R32–R35, R38–R41, R43, R46–R48**. Addresses **V18, V19, V37, V46, V47**;
 enabled by **V20**; constrained by **V21, V33, V45**.
@@ -376,6 +320,20 @@ Then, and only then:
    equivalent (**V41**), **R37** has to be met upstream — stricter VAD, or an energy/duration gate
    ahead of `inference_queue`.
 
+**Three questions inherited from the branch evaluation** (`docs/decisions/0006`), all of which the
+fixtures settle and none of which may be assumed:
+
+- **Windowed streaming versus fragment VAD is now a fourth thing to measure.** Transcribing coherent
+  windows instead of sub-second fragments preserves sentence context and stops words being cut at
+  silence boundaries — a real insight, and untested against **R37**.
+- **Replacing `webrtcvad` with Silero is not free at 48 kHz.** Silero accepts the rate by 3:1
+  decimation with no anti-alias filter (**V50**), so the VAD would judge aliased audio. Resample before
+  the VAD, or accept the decimation, but decide it rather than inherit it.
+- **Do not adopt hardware-conditional model selection.** The branch auto-selects a lighter model on
+  fanless Macs by marketing name, which would make any measured default untrue on half the machines
+  and defeats **R11**. The underlying concern — thermal headroom over a long hearing — belongs in the
+  measurement criteria instead.
+
 **Blocked on something this repo does not have: audio fixtures.** `history/` holds real meetings and
 is off limits, so the test material has to be recorded deliberately for the purpose. That recording is
 the first task of this item, not an afterthought.
@@ -582,6 +540,19 @@ Two things follow from **R45**, and both are cheap only if done now:
 Because the choice is known before the streams open, the writer thread is configured once at
 Start rather than having to be attachable to a running capture.
 
+**Most of this exists already on the unmerged branch, and `docs/decisions/0006` lists what is wrong
+with it.** The queue-plus-writer-thread shape and the WAV-close-first shutdown ordering are worth
+taking; a truncated WAV header is a lost record under **R45**, and that ordering is not obvious. Four
+things must change before any of it lands: the rate (16 kHz there, 48 kHz here), the location
+(`recordings/<session_id>/` under the repo, versus derived from the storage root under **R44**/**R48**),
+the filenames, and the fact that it captures unconditionally with no toggle, no warning and no sticky
+state (**R16**, **R41**). It also records no per-track start time, so the offline merge it feeds assumes
+a shared `t=0` that nothing establishes — which is the same gap `docs/decisions/0001` already requires
+closing.
+
+Its offline re-transcriber is **R45**'s "re-transcribe with a better model later", already built and
+its merge ordering verified. Take it after the same rework, not before.
+
 Constraints, ordered by how easily each silently ruins the feature:
 
 - **Write from the raw stream, upstream of VAD.** `_processing_thread` discards whatever VAD
@@ -626,6 +597,11 @@ resample step before `inference_queue`.
 ## 7.7 — Post-meeting cleanup script
 
 Satisfies **R9, R10, R12, R13, R14, R15**. Uses the retention filename contract when audio exists.
+
+⚠️ **The headless-Claude premise is reopened** — see open decision 5. The unmerged branch already
+summarises transcripts with a local `mlx-lm` model and no network call, which is strictly better for
+**R15**. That is a different deliverable from this item, so it does not simply replace it; decide
+before building.
 
 A script under `tools/` that feeds an archived `history/Meeting_*.md` to headless Claude
 (`claude -p`) with a fixed prompt, writing a cleaned copy alongside it. Using full-document
@@ -694,6 +670,13 @@ Resolve before the cited work is implemented. These are blockers, not polish.
 4. **Qwen3-ASR supply chain (**V44**).** Community MLX reimplementation, single maintainer, product
    premise is offline forever. Accept the risk, vendor-pin a commit hash + wheel mirror, or
    disqualify on supply-chain grounds even if it wins the bake-off numbers.
+5. **Does post-meeting cleanup run locally or through headless Claude?** The plan specifies
+   `claude -p`, which sends meeting content off the machine — permitted only because it is an operator
+   tool outside the app (**R15**). The unmerged branch shows a local `mlx-lm` pass works and keeps the
+   offline guarantee whole, but it produces a *summary*, not the normalisation, re-flowing, speaker
+   splitting and hallucination removal the cleanup item is for, and whether a small local model does
+   those acceptably is unmeasured. It would also add a further model download that must land under
+   **R48**. Blocks the cleanup item. Recorded from `docs/decisions/0006`.
 
 ---
 
@@ -703,6 +686,12 @@ Resolve before the cited work is implemented. These are blockers, not polish.
   reads as armed and nothing will ever fire, with no signal in the UI. This is the failure this
   product can least afford: it is discovered at the moment the defence was needed. Fixed by the
   advisor-backend item's liveness work (**R36**).
+- **The anti-hallucination filter destroys real speech.** `transcriber.py:163-164` matches the ghost
+  blacklist as a **substring**, so "謝謝大家" and "Okay, thank you, see you" are dropped before they
+  reach the buffer, and with retention off there is no recording to recover them from (**V48**). The
+  fix is the whole-utterance exact match already written and tested on the unmerged branch — the one
+  piece `docs/decisions/0006` marks adoptable as-is. Cheap and independent of every other item; its
+  tests need converting to the `src.`-prefix import convention.
 - **`HF_HOME` in `.env` has never taken effect** — see **V19**. Fixed by the configuration item.
   Confirm afterwards by checking where weights actually land on a fresh run.
 - **Capture starts before authentication** — see **V18**. Fixed by the configuration item.

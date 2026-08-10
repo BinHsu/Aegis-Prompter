@@ -10,9 +10,13 @@
 >
 > So before reasoning from a `V*`: **establish which tree you are talking about.** A constraint that
 > is true of `main` and false of that branch is not a contradiction in this document — it is a
-> question about which code will exist when the work lands. Evaluating that branch is the first item
-> in the plan, and until its outcome is recorded here, `V1`, `V4`, `V5` and the `transcriber.py`
-> line references throughout are statements about `main` only.
+> question about which code will exist when the work lands. `V1`, `V4`, `V5` and the
+> `transcriber.py` line references throughout are statements about `main` only.
+>
+> **That branch has now been evaluated** — see `docs/decisions/0006`, which sorts every piece of it
+> into adopt / adopt-after-rework / re-derive / discard. Nothing has been merged, so the warning above
+> still describes the tree. What changed is that the disagreements are now catalogued instead of
+> merely suspected.
 
 What this product must do, what has been measured, and what has been ruled out. **Nothing here
 becomes obsolete by doing work** — a requirement still holds after it has been satisfied, and from
@@ -438,6 +442,16 @@ Verified with Command Line Tools `clang` only — **no Xcode required**.
   48 kHz while `transcriber.py` opens its stream at 16 kHz; whether PortAudio resamples was not
   tested. `webrtcvad` accepts 48000, so the fallback is to run VAD at 48 k and resample only
   before Whisper.
+- **V50 — Silero VAD accepts 48 kHz by decimating it, and this constrains the VAD choice.** Measured
+  2026-08-10 against `silero-vad` as pinned by the unmerged branch (**V49**): `get_speech_timestamps`
+  does not reject a 48 kHz input. When the rate is a multiple of 16 kHz it takes `audio[::step]` —
+  **plain 3:1 subsampling with no anti-alias filter** — and then rescales the returned sample indices
+  by the same factor. Two consequences, and they point in opposite directions: buffer-slicing
+  arithmetic built on those indices **survives** the move to 48 kHz unchanged, but the VAD would be
+  judging aliased audio, and how much that costs on music and chimes (**R37**) is unmeasured. Since
+  48 kHz capture is mandatory (`docs/decisions/0001`) and that branch deletes `webrtcvad` outright,
+  replacing the VAD means either resampling before the VAD or accepting the decimation — a decision
+  the ASR work must make explicitly rather than inherit.
 
 ## Browser-side audio capture is impossible here
 
@@ -587,20 +601,40 @@ Verified with Command Line Tools `clang` only — **no Xcode required**.
   **not** an ancestor of `main`, and `git diff 201eeea..main -- src/` is **empty** — so `main`'s source
   is byte-identical to the fork point and the branch still applies without conflict.
 
-  What it changes, **read from its commit messages and file list, not verified by running it**: Silero
-  VAD sliding-window streaming replacing the webrtcvad fragment pipeline; `whisper-large-v3-turbo` as
-  the default with a bilingual zh/en `initial_prompt`; a bounded ring buffer replacing the unbounded
-  `inference_queue`; per-track lossless WAV capture at **16 kHz** into `recordings/<session_id>/` via a
-  writer thread; `src/retranscribe.py` for offline re-transcription and per-track merge;
-  `src/summarizer.py` for a local `mlx-lm` summary; and a hallucination filter changed from substring
-  to whole-utterance matching. Roughly 29 unit tests against `main`'s 8.
+  What it changes: Silero VAD sliding-window streaming replacing the webrtcvad fragment pipeline;
+  `whisper-large-v3-turbo` as the default with a bilingual zh/en `initial_prompt`; a bounded ring
+  buffer replacing the unbounded `inference_queue`; per-track lossless WAV capture at **16 kHz** into
+  `recordings/<session_id>/` via a writer thread; `src/retranscribe.py` for offline re-transcription
+  and per-track merge; `src/summarizer.py` for a local `mlx-lm` summary; and a hallucination filter
+  changed from substring to whole-utterance matching.
 
-  It carries two measurements this document does not: **Silero VAD costs ≈0.3% of decode**, so VAD was
-  never the throughput bottleneck; and **`NPU_LOCK` was kept deliberately** — no parallelism gain on a
-  single GPU, and removing it only risks Metal crashes. Both are *reported*, not re-measured here.
+  **Run in an isolated worktree on 2026-08-10**, which corrected four of the claims above — all four
+  had been read from its commit messages rather than executed:
+
+  - **Its suite is 60 tests and all 60 pass**, not the "roughly 29" previously recorded (`main` has 8).
+    A branch that passes its own suite is a source of code, not only of ideas.
+  - **It ships a second live ASR model that the commit messages do not advertise.**
+    `resolve_default_model()` auto-selects `whisper-medium-mlx` on fanless Macs by `system_profiler`
+    marketing name, keeps `large-v3-turbo` elsewhere, and its offline path hardcodes `large-v3-turbo`
+    regardless — so the default is conditional on chassis and code path, not the single value recorded
+    before.
+  - **It reads five environment keys, not three**: `WHISPER_MODEL`, `WHISPER_LANGUAGE`,
+    `TRANSCRIBE_MODE`, `SUMMARY_MODEL`, `AUTO_SUMMARIZE_ON_EXIT`. Only the first three reached its
+    `.env.example`.
+  - **It does not fix capture-before-authentication and worsens it.** The auto-start in `app.py` is
+    untouched (**V18**), so loading the URL now also opens two WAV files on disk. **R25** is breached
+    further than on `main`.
+
+  Two measurements it reports remain *reported only*, and neither becomes a constraint here: **≈0.3%
+  of decode for Silero VAD** — which its own notes attach to a *rejected* incremental-VAD
+  optimisation, not to the VAD as shipped — and **`NPU_LOCK` kept deliberately** for want of any
+  parallelism gain on a single GPU. Its fanless model comparison was measured on short, clean TTS
+  clips by its author's own admission.
 
   Its own notes say why it never merged: **live audio run pending**, throughput under thermal
-  throttling untuned. So the code exists and the evidence for it does not.
+  throttling untuned. Running its suite does not change that: no claim about false triggers, code
+  switching or sustained throughput can be settled without audio fixtures. Disposition per piece is
+  in `docs/decisions/0006`.
 
 ## The live transcript path is already lossy
 
