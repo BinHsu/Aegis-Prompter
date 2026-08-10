@@ -369,6 +369,7 @@ requirement it follows from.
 | OpenCC in the live path | Simplified/Traditional ambiguities need surrounding context, which only the post-processing pass has. | R9, R10, V5 |
 | Persisting *enumerable* selections (a `.aegis_settings.json` for the microphone) | Meet and Zoom web persist nothing: default plus override is sufficient, and storing a device reference only creates a stale name-or-index problem. Typed values are a different case — see R32/R33. | R26, R33 |
 | Archiving audio *in order to* diarize | The cleanup pass works from text. Audio retention stands on corroboration instead. | R14, R16 |
+| Archiving at 16 kHz to match what the pipeline consumes | 48 kHz is the uncompressed rate the hardware produces; an archive kept for corroboration must not be a resampled derivative of the record. Costs 3x the disk and moves resampling into the software path. | R3, R16, V7, V12 |
 | Deleting `.env` outright | The cache directory must stay user-choosable; large weights may not belong on the internal drive. `.env` survives as a machine-written form snapshot. | R18, R19, R32 |
 | A separate local intent model to gate the LLM | The RAG score is already an intent judgement and costs microseconds; a second model would contend for the NPU that `201eeea` exists to unblock. | V22, V23 |
 | RAG backends other than Qdrant | Retrieval-as-a-service has no standard interface — Qdrant, Weaviate, Pinecone and Chroma each have their own API. One vendor beats an abstraction over four. | R28, R31 |
@@ -575,6 +576,17 @@ worst moment. Split the two concerns currently fused in `Transcriber.__init__`:
 - **Model warm-up** touches no audio device; it may run automatically once configuration exists.
 - **Opening the audio streams** waits for authentication *and* an explicit Start.
 
+### ⚠️ Two places where this item departs from what was asked for
+
+Recorded because both were requested one way and planned another. Neither is a silent
+reinterpretation to be discovered later; if either reason stops holding, the plan should change
+back rather than the request being quietly forgotten.
+
+| Asked for (2026-08-07) | Planned instead | Why |
+|---|---|---|
+| Warm-up also waits for Start — nothing heavy happens until the operator presses it | Warm-up runs as soon as configuration exists; **only stream opening** waits for Start | **V33**: two `Transcriber` instances warm *sequentially* under `NPU_LOCK`, minutes for a 1.61 GB model. Deferring that to Start puts the whole wait at the worst possible moment — after the operator has committed to starting. The half that carries the actual guarantee is preserved: no capture before authentication and an explicit Start (**R24, R25**). |
+| The web page runs `setup_mac.sh` once the operator has chosen a cache directory | `setup_mac.sh` keeps its current scope; only the **model download** moves behind the UI | Streamlit is already running *inside* `.venv` by the time the form is visible, so it cannot rebuild that `.venv` from within, and Homebrew installs need a shell the app does not own. The stated goal still holds — nothing must be downloaded before the first cold start (**R21**) — because the weights are the only part that was ever large. |
+
 ### Configuration lifecycle
 
 | Setting | Real lifecycle | Belongs in |
@@ -663,6 +675,21 @@ Two migration traps in moving the index to Qdrant, both of which fail **silently
   **introduces** it. Querying with a different model of the same dimensionality returns confident
   nonsense.
 
+**Open decision — are the two band edges adjustable, and if so from where?** `0.65` is the
+threshold already shipping in `local_advisor.py` (**V22**), so it has at least been exercised
+against a real index. **`0.45` has no empirical basis whatsoever** — it was proposed while drafting
+this plan and has never been measured. Two separate questions follow:
+
+- **Whether to expose them at all**, or leave both as constants until real meetings give them a
+  basis. Exposing an unmeasured number invites tuning by superstition, and a wrong lower edge fails
+  in the expensive direction: too low floods the speaker with generated text, too high silently
+  disables the LLM band.
+- **If exposed, which layer.** A threshold is *typed*, not enumerable, so **R33** places it in
+  `.env` with the other persisted settings rather than on the pre-flight panel — it is a property
+  of the knowledge base and the domain, not of a single meeting.
+
+Resolve by measurement during 7.5, not before it.
+
 ## 7.6 — Post-meeting cleanup script
 
 Satisfies **R9, R10, R12, R13, R14, R15**.
@@ -709,15 +736,24 @@ Constraints, ordered by how easily each silently ruins the feature:
 - **Record the precise session start time**, so a transcript timestamp converts to an offset
   into the WAV. Without it, "jump to this moment" — the point of corroboration — does not work.
 
-Size at 16 kHz mono int16:
+Size, mono int16 — the chosen row is 48 kHz:
 
 | | per hour, per track | both tracks | 3-hour hearing |
 |---|---|---|---|
 | WAV @ 16 kHz | 115 MB | 230 MB | ~690 MB |
-| WAV @ 48 kHz (tap's native rate) | 346 MB | 691 MB | ~2.1 GB |
+| **WAV @ 48 kHz** (native rate of both the tap and the microphone) | **346 MB** | **691 MB** | **~2.1 GB** |
 
-**Open decision:** archive at 16 kHz (matches what the pipeline processed, so the record matches
-the transcript) or at 48 kHz (higher fidelity for disputes, 3x the disk). 16 kHz suggested.
+**Sample rate — decided 2026-08-07: 48 kHz.** 48 kHz is the uncompressed rate the hardware
+actually produces (**V7**); 16 kHz is merely what the inference path happens to consume. Archiving
+at 16 kHz would store a resampled *derivative* of the record, and an archive kept for
+corroboration (**R16**) must not be a derivative of what was heard. The 3x disk cost is accepted.
+
+Consequence, and it is not free: the capture stream must open at **48 kHz**, so resampling moves
+from the device into the software path. That makes **V12**'s fallback — run VAD at 48 kHz, resample
+only immediately before inference — the *mandatory* design rather than a contingency, and it
+couples this item to 7.2. `transcriber.py:46` currently hardcodes `sample_rate = 16000`, and
+`webrtcvad` accepts 48000, so the change is confined to stream setup plus one resample step before
+`inference_queue`.
 
 ---
 
