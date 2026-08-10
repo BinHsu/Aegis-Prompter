@@ -61,10 +61,94 @@ needs only configuration, while *closing* it needs the 48 kHz path from the proc
 long-lead task — recording audio fixtures — depends on neither and can start immediately, in
 parallel with configuration.
 
+**A third pass added `7.0`.** An unmerged branch (**V49**) turns out to already implement parts of the
+ASR, retention and cleanup items. It has to be evaluated before those are built, or the choice between
+adopting and re-deriving gets made by accident. It is numbered `7.0` so no existing section number
+moves again.
+
 Plan numbers are execution order and are renumbered whenever it changes. Older commits saying
 "7.4" for configuration mean the *configuration work*, not today's section number.
 
-## 7.1 — Configuration and startup: one new file plus `app.py` — 🔴 do first
+## 7.0 — Evaluate the unmerged streaming branch — 🔴 do this first
+
+Addresses **V49**. Gates nothing formally, but its outcome can change the shape of the ASR bake-off,
+the retention item and the cleanup item, so doing it after them means either re-deriving work that
+exists or discarding it without having looked.
+
+Numbered `7.0` rather than inserted as `7.1` so every existing section number and cross-reference in
+this file stays valid.
+
+**This is an evaluation, not a rescue.** The goal is a decision per piece of that branch, not a
+working branch. Do not fix it, do not rebase it, do not merge it wholesale — it predates every Phase 7
+requirement, and its own `CLAUDE.md` predates the `AGENTS.md` split, so a docs merge would fight.
+
+### Step 1 — isolate it
+
+```bash
+git worktree add /tmp/aegis-eval origin/feat/streaming-transcriber
+```
+
+A worktree, because `main` must stay untouched and switching branches in place would swap `src/` under
+a running Streamlit. The branch changes `requirements.txt` (Silero VAD, `mlx-lm`), so it needs **its own
+virtualenv inside the worktree** — installing those into `.venv` would silently change what `main`
+resolves at import time, which is the kind of contamination that gets discovered a week later.
+
+### Step 2 — does it stand up on its own?
+
+Run its suite and report the real number, not the number its commit message claims:
+
+```bash
+cd /tmp/aegis-eval && PYTHONPATH="$PWD" .venv-eval/bin/python -m pytest tests/unit -q
+```
+
+If the suite fails, stop and report — a branch that cannot pass its own tests is a source of ideas, not
+of code.
+
+### Step 3 — separate what can be checked now from what needs hardware
+
+The distinction matters because the second group cannot be settled without the audio fixtures the ASR
+item is already waiting on, and pretending otherwise produces confident nonsense.
+
+| Claim | Checkable now, how | Verdict without fixtures |
+|---|---|---|
+| Hallucination filter is substring→whole-utterance | Read the diff, run its boundary tests. `main` still has the substring bug at `transcriber.py:163` | **Decidable** |
+| WAV writing stays off the audio callback | Read the callback and the writer thread; the project invariant is absolute | **Decidable** |
+| WAVs are 16 kHz under `recordings/<session_id>/` | Read it. Conflicts with `docs/decisions/0001` (48 kHz) and **R48** (fixed layout under a storage root) | **Decidable — and it is a conflict** |
+| `.env` keys `WHISPER_MODEL` / `WHISPER_LANGUAGE` / `TRANSCRIBE_MODE` | Compare against the nine-key inventory (**R32**, **R48**) | **Decidable — needs renaming or absorbing** |
+| `retranscribe.py` merges per-track WAVs correctly | Synthesise two short WAVs with `tmp_path` and assert ordering and labels | **Decidable** |
+| Nothing starts capture before Start (**R25**) | Read its `app.py` and `global_state.py` changes against **V18** | **Decidable** |
+| Silero VAD reduces false triggers on music (**R37**) | — | **Blocked on fixtures** |
+| `turbo` + bilingual `initial_prompt` improves code-switching (**R8**, **R10**) | — | **Blocked on fixtures** |
+| Silero VAD ≈0.3% of decode cost | — | **Blocked** — adopt as a `V*` only after re-measuring here |
+| `NPU_LOCK` gains nothing to remove | — | **Blocked** — but it agrees with the existing invariant, so nothing depends on settling it |
+
+### Step 4 — test it against the requirements, not against taste
+
+The question is never "is this good code". It is "does this violate something". Walk the branch against
+**R25** (capture before Start), **R32**/**R48** (`.env` inventory and storage layout), **R37**
+(non-speech), `docs/decisions/0001` (48 kHz), the four invariants in `AGENTS.md`, and the English-only
+rule. A bilingual `initial_prompt` is *content*, not interface, so it does not breach **R38** — see
+`docs/decisions/0003`.
+
+### Step 5 — the deliverable is a decision record, per piece
+
+`docs/decisions/0006`, sorting every piece into exactly one bucket with a reason:
+
+| Bucket | Meaning |
+|---|---|
+| **Adopt now** | Cherry-pick onto `main` as its own commit, with a test |
+| **Adopt after rework** | The idea survives, the implementation contradicts a requirement — name which one |
+| **Re-derive under Phase 7** | Keep the insight, write it fresh where the branch's shape no longer fits |
+| **Discard** | With the reason, so it is not rediscovered as a novelty in three months |
+
+Anything reported-but-unmeasured becomes a `V*` **only after re-measurement**, marked with its own
+date. Copying its benchmark numbers in as verified would import a claim as a fact — the specific
+failure `V49` exists to flag.
+
+**Do not delete the remote branch until `0006` exists.** The record is what preserves the knowledge;
+until then the branch is the only copy.
+
+## 7.1 — Configuration and startup: one new file plus `app.py` — 🔴 do after 7.0
 
 Satisfies **R17–R25, R32–R35, R38–R41, R43, R46–R48**. Addresses **V18, V19, V37, V46, V47**;
 enabled by **V20**; constrained by **V21, V33, V45**.

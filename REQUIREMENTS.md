@@ -1,5 +1,19 @@
 # Requirements
 
+> ## ⚠️ Read this before trusting any `V*`
+>
+> **Every verified constraint below describes `main`.** There is an unmerged branch,
+> `origin/feat/streaming-transcriber`, whose `src/transcriber.py` **contradicts several of them** —
+> it already replaces the VAD pipeline, changes the default ASR model, and writes per-track WAVs
+> (**V49**). `main`'s `src/` is byte-identical to that branch's fork point, so it still applies
+> cleanly; the branch is unverified on live audio, not abandoned.
+>
+> So before reasoning from a `V*`: **establish which tree you are talking about.** A constraint that
+> is true of `main` and false of that branch is not a contradiction in this document — it is a
+> question about which code will exist when the work lands. Evaluating that branch is the first item
+> in the plan, and until its outcome is recorded here, `V1`, `V4`, `V5` and the `transcriber.py`
+> line references throughout are statements about `main` only.
+
 What this product must do, what has been measured, and what has been ruled out. **Nothing here
 becomes obsolete by doing work** — a requirement still holds after it has been satisfied, and from
 then on it is the standard the implementation is judged against. For where the project is now and
@@ -565,6 +579,28 @@ Verified with Command Line Tools `clang` only — **no Xcode required**.
 - **V21** — `huggingface_hub` download progress is reported through **tqdm on stdout, not
   through `logging`**. Tailing `logs/aegis_engine_*.log` will therefore miss the download phase,
   which is exactly the phase **R23** most needs to show.
+
+## An unmerged branch already contradicts several constraints above
+
+- **V49 — `origin/feat/streaming-transcriber` applies cleanly and disagrees with `main`.** Measured
+  2026-08-10: the branch tip is `467a442` (10 commits, 2026-07-02), it forks from `201eeea`, it is
+  **not** an ancestor of `main`, and `git diff 201eeea..main -- src/` is **empty** — so `main`'s source
+  is byte-identical to the fork point and the branch still applies without conflict.
+
+  What it changes, **read from its commit messages and file list, not verified by running it**: Silero
+  VAD sliding-window streaming replacing the webrtcvad fragment pipeline; `whisper-large-v3-turbo` as
+  the default with a bilingual zh/en `initial_prompt`; a bounded ring buffer replacing the unbounded
+  `inference_queue`; per-track lossless WAV capture at **16 kHz** into `recordings/<session_id>/` via a
+  writer thread; `src/retranscribe.py` for offline re-transcription and per-track merge;
+  `src/summarizer.py` for a local `mlx-lm` summary; and a hallucination filter changed from substring
+  to whole-utterance matching. Roughly 29 unit tests against `main`'s 8.
+
+  It carries two measurements this document does not: **Silero VAD costs ≈0.3% of decode**, so VAD was
+  never the throughput bottleneck; and **`NPU_LOCK` was kept deliberately** — no parallelism gain on a
+  single GPU, and removing it only risks Metal crashes. Both are *reported*, not re-measured here.
+
+  Its own notes say why it never merged: **live audio run pending**, throughput under thermal
+  throttling untuned. So the code exists and the evidence for it does not.
 
 ## The live transcript path is already lossy
 
