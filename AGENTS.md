@@ -12,9 +12,18 @@ architecture description — including one in this file.
 | Question | Source of truth |
 |---|---|
 | Does this file / class / function exist, and where? | `FILEMAP.md` (generated) |
-| What is the project working on, what is blocked? | `STATE.md` |
+| What must the product do, what has been measured, what is ruled out? | `REQUIREMENTS.md` |
+| Where is the project now, and what is next? | `STATE.md` |
+| Why was a rejected option rejected, and when? | `docs/decisions/` |
 | What shipped, and when? | `CHANGELOG.md` |
 | How does a user set this up and run it? | `README.md` |
+
+`REQUIREMENTS.md` and `STATE.md` split along one line: **does the statement stop being true once
+the work is done?** If yes it is a plan item or a known issue, and it lives in `STATE.md`, which is
+rewritten freely. If no it is a requirement (`R*`), a measured constraint (`V*`), or a closed
+decision, and it lives in `REQUIREMENTS.md`, where a large deletion is a warning sign rather than
+routine tidying. Reference direction is one-way: the plan cites `R*`/`V*`, never the reverse.
+`tools/check_state.py` enforces both.
 
 `FILEMAP.md` is **generated from the AST** by `tools/gen_filemap.py`. Never hand-edit it.
 
@@ -42,8 +51,9 @@ from the stale copy.
 - **`.env.example` is the tracked template.** Any new `.env` flag must be added to it in the
   same change.
 - **Documentation Sync.** When you add a feature, change architecture, or introduce a
-  configuration toggle, you MUST evaluate whether `README.md` needs updating. Put project
-  state in `STATE.md` and notable changes in `CHANGELOG.md` — not in this file.
+  configuration toggle, you MUST evaluate whether `README.md` needs updating. Put requirements and
+  measured constraints in `REQUIREMENTS.md`, progress in `STATE.md`, and notable changes in
+  `CHANGELOG.md` — not in this file.
 
 ## Invariants that break the app if violated
 
