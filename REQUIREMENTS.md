@@ -153,10 +153,12 @@ Stated without implementation. Each item is something the product must do, or mu
 The web page *is* the product's only surface (**R17**), so its behaviour is a requirement, not a
 design detail left to whoever implements it.
 
-- **R38 — Operator-facing text is Traditional Chinese.** The operator reads cues aloud in a Taiwan
-  hearing room, so the interface speaks the same language as the material. This does not loosen the
-  English-only codebase rule in `AGENTS.md`, which governs identifiers, comments, log output and test
-  assertions — a displayed string is none of those. Log files stay English so they remain greppable.
+- **R38 — Operator-facing interface text is English**, like the rest of the codebase. **Content is
+  not interface**: transcript lines, retrieved cues and generated advice appear in whatever language
+  the meeting is conducted in, and nothing may translate or normalise them — that would break
+  **R3**. The distinction is between the chrome and what flows through it. Keeping the chrome English
+  means `AGENTS.md`'s English-only rule extends to displayed strings with no exception to police,
+  and log files stay greppable against the interface they describe.
 - **R39 — No dead ends.** Every reachable state renders something that says what is happening and
   what the operator can do. This includes failure states, which are the ones that get skipped: an
   undetermined local/remote verdict, a denied macOS audio-capture permission, a capture device that
