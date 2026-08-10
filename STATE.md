@@ -213,6 +213,7 @@ because `app.py:27` auto-starts; removing that auto-start creates this state.
 | File | Change |
 |---|---|
 | `src/bootstrap.py` (new) | Zero project imports — stdlib plus `dotenv` only. Reads and writes `.env`, resolves the cache directory, sets `os.environ["HF_HOME"]` *before* anything heavy loads, checks whether weights are present, owns the readiness state machine. |
+| `.env.example` | **Regenerate to match the persisted inventory** — the nine settings fields plus `ARCHIVE_AUDIO`, with `MULTILINGUAL_MODE` removed. `AGENTS.md` makes this obligatory in the same change as the flag, and the template is currently a snapshot of the pre-Phase-7 scheme. |
 | `app.py` | Move `from global_state import ...` out of module scope into a function called only once configuration exists; drop the `app.py:27` auto-start (**V18**); add the settings form, the `is_local` gate, the waiting state, and Start gating. |
 | `transcriber.py` | **Untouched.** |
 | `local_advisor.py` | **Untouched** by this item (7.5 changes it). |
@@ -279,7 +280,7 @@ back rather than the request being quietly forgotten.
 | ASR model | once per machine | `.env`; changing it re-warms (**V33**) |
 | `ENABLE_LOCAL_RAG` and the LLM toggle | per session | pre-flight panel |
 | audio backend | capability, not preference | auto-detected (7.2) |
-| `ARCHIVE_AUDIO` | per **meeting** | pre-flight toggle, default off (7.7) |
+| `ARCHIVE_AUDIO` | **sticky per machine** | pre-flight toggle that writes itself back to `.env` (**R16, R46**) |
 | microphone | per meeting, enumerable | pre-flight dropdown, not persisted (**R33**) |
 | `MULTILINGUAL_MODE` | — | **deleted** (7.1) |
 | `PIP_CACHE_DIR` | during `pip install` only | `setup_mac.sh`, which already exports it |
@@ -391,14 +392,29 @@ dropping residual Whisper hallucinations.
 
 ## 7.7 — Optional dual-track audio retention
 
-Satisfies **R3, R16, R44**; bounded by **R4**; warned about per **R41**.
+Satisfies **R3, R16, R44, R45, R46**; bounded by **R4**; warned about per **R41**.
 
-A **toggle on the pre-flight panel** (7.4, **R27**), **default off** — a per-meeting decision,
-committed when Start is pressed and fixed for the session. Off by default on disk-space grounds
-and because recording carries consent expectations the operator should choose deliberately, which is
-why ticking it warns with a size estimate rather than silently starting to fill a disk (**R41**).
+A **toggle on the pre-flight panel** (7.4, **R27**) that **persists its own state** — off until the
+operator first enables it, then sticky on that machine (**R16**). Off initially on disk-space grounds
+and because recording carries consent expectations the system should not assume, which is why turning
+it on warns with a size estimate rather than silently starting to fill a disk (**R41**). Sticky rather
+than per-meeting because a default of off means the one meeting that later turns out to matter is the
+one nobody armed; and because it is sticky, the panel shows its current state before every Start
+(**R46**) rather than only at the moment it was chosen.
+
 The toggle is unavailable until an archive directory is configured (**R44**); files land there, not
 under `history/`, though `history/` is already gitignored either way.
+
+Two things follow from **R45**, and both are cheap only if done now:
+
+- **The session record states whether audio was kept, and where.** 0001 already requires the precise
+  session start time in that header; retention status and archive path go beside it. Without them,
+  "recorded and later deleted" is indistinguishable from "never recorded" — and **R4** makes deletion
+  a normal event, not an anomaly.
+- **The transcript is a lossy interpretation, and the plan should stop implying otherwise.** With
+  retention off, whatever VAD and the no-speech filters discarded is gone. That is a real gap against
+  **R3** in the default configuration, and stating it is the honest alternative to quietly relying on
+  the operator to have known.
 
 Because the choice is known before the streams open, the writer thread is configured once at
 Start rather than having to be attachable to a running capture.

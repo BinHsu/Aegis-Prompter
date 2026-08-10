@@ -89,7 +89,23 @@ Stated without implementation. Each item is something the product must do, or mu
   run. No runtime code path in the application may depend on it, and the application's offline
   guarantee must remain intact.
 - **R16 — Dual-track audio may optionally be retained**, for post-processing and for
-  **corroboration** — settling disputes about what was actually said.
+  **corroboration** — settling disputes about what was actually said. Retention is **off unless the
+  operator has turned it on**, and the choice is **sticky**: once enabled it stays enabled on that
+  machine until changed, because a per-meeting default of off means the one meeting that later turns
+  out to matter is the one nobody armed.
+- **R45 — What is lost by not retaining is lost irreversibly, and the operator must be able to tell
+  afterwards whether a session was retained.** The transcript is a lossy interpretation: silence
+  judgements, minimum-duration filters and hallucination filters each discard material, and none of it
+  can be recovered from the text. Five capabilities exist only while the audio does — corroboration
+  (**R16**), re-transcribing an archived meeting with a better model, acoustic speaker attribution as
+  the fallback if text-only attribution proves inadequate (**R12**), reproducing a false trigger after
+  the fact (**R37**), and verifying rather than merely re-flowing during cleanup (**R14**). So the
+  session record must state whether audio was kept and where it went; otherwise "recorded and later
+  deleted" and "never recorded" are indistinguishable, and **R4** makes deletion a normal event.
+- **R46 — A sticky choice is disclosed every session, not merely applied.** Any setting that carries
+  over from a previous run and changes what the system does to the operator's data must be visible on
+  the pre-flight panel in its current state before Start is pressed. Persistence removes the need to
+  re-decide; it must not remove the opportunity to notice.
 
 ## Configuration and startup
 
@@ -109,9 +125,12 @@ Stated without implementation. Each item is something the product must do, or mu
 - **R32 — `.env` is a snapshot of the settings form.** Values the operator typed are persisted
   and shown back on the next launch; absent configuration renders as **blank fields**, not an
   error. Credentials render masked, with a reveal toggle.
-- **R33 — Persist what was typed; do not persist what can be enumerated.** A URL or a credential
-  cannot be rediscovered at runtime, so it is stored. A device list is rebuilt on every launch,
-  so storing a choice would only create a stale reference.
+- **R33 — Persist what cannot be rediscovered; do not persist what would go stale.** A URL, a
+  credential or a directory cannot be recovered at runtime, so it is stored. A device list is rebuilt
+  on every launch, so storing a choice there would only create a stale reference to a name or index
+  that has moved. The test is *rediscoverable versus stale-prone*, not typed versus clicked: an
+  operator's standing preference — retain audio or not (**R16**) — is a switch rather than a typed
+  value, but nothing on the machine can rediscover it and it cannot go stale, so it persists too.
 
 ## Device selection and pre-flight
 
@@ -215,13 +234,18 @@ the real one, never a sentinel (**R32**).
 
 ### Per-meeting controls — the pre-flight panel
 
-Not persisted (**R33**); rebuilt from live enumeration and defaults on every launch. Pressing Start
-commits all of them for the session.
+Rebuilt from live enumeration and defaults on every launch, and — with one exception — not persisted
+(**R33**). Pressing Start commits all of them for the session.
+
+The exception is **retain dual-track audio**, which persists its own state (**R16**). It is a single
+switch with a single behaviour: whatever it reads when Start is pressed becomes the machine's standing
+preference. There is deliberately **no session-only override**, because one switch with two meanings —
+sometimes remembered, sometimes not — is worse than either behaviour alone.
 
 | Control | Kind | Default |
 |---|---|---|
 | Microphone | dropdown | system default (**R26**) |
-| Retain dual-track audio | toggle | off (**R16**) |
+| Retain dual-track audio | toggle, **and it persists its own state** | whatever it was last set to; off until first enabled (**R16**, **R46**) |
 | RAG advisor | toggle **plus a readiness line** | on (**R36**) |
 | LLM advisor | toggle | off, hidden unless configured (**R28**) |
 | Active capture backend | read-only indicator | auto-detected (**R7**) |
@@ -239,7 +263,7 @@ side effect of another control.
 | LLM credential, LLM model name | LLM base URL is non-empty | — |
 | **LLM advisor** toggle | **hidden entirely** unless LLM base URL is configured | ⚠️ generated text is unverified — not safe to read aloud (**R30**) |
 | **RAG advisor** toggle | the index reports at least one chunk | — (the readiness line always shows chunk count and build date, armed or not — **V34**) |
-| **Retain dual-track audio** | an audio archive directory is configured (**R44**) | ⚠️ disk estimate for the expected meeting length, plus the reminder that recording carries consent expectations (**R4**) |
+| **Retain dual-track audio** | an audio archive directory is configured (**R44**) | ⚠️ disk estimate for the expected meeting length, plus the reminder that recording carries consent expectations (**R4**). Because the switch is sticky, the warning appears when it is **turned on**, while the pre-flight panel shows the state it is already in on every subsequent run (**R46**) |
 | Model cache directory | always | 📁 folder chooser (**V45**) |
 | Audio archive directory | always | 📁 folder chooser (**V45**) |
 | ASR model | always | ⚠️ returns to `warming` for minutes, possibly preceded by a download (**V33**) |
