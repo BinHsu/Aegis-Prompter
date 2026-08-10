@@ -43,7 +43,7 @@ audio retention, and the advisor slots are opt-in tools rather than pipeline beh
 
 ---
 
-# 📋 Phase 7 — Requirements
+# 📋 Requirements
 
 Stated without implementation. Each item is something the product must do, or must not do.
 
@@ -69,6 +69,11 @@ Stated without implementation. Each item is something the product must do, or mu
 - **R10 — Traditional Chinese** is the target script for the Taiwan context — subject to R9
   for the live path.
 - **R11 — The ASR model must be a deliberate choice**, re-examined rather than inherited.
+- **R37 — Non-speech must not become an utterance.** Music, notification chimes and keyboard noise
+  enter the participant track by design (**R1**, **R5**). Whatever model is chosen, the pipeline must
+  not turn them into `Participant` lines — a false line can fire a defensive cue, which is worse than
+  silence. This ranks **above** transcription accuracy when choosing a model, because published ASR
+  benchmarks measure word error on speech and none of them measure this.
 
 ## Speaker attribution
 
@@ -143,9 +148,106 @@ Stated without implementation. Each item is something the product must do, or mu
   and *during* a meeting rather than discovered afterwards. The audio path already satisfies this
   with its level meters; the advisor path does not.
 
+## The control surface
+
+The web page *is* the product's only surface (**R17**), so its behaviour is a requirement, not a
+design detail left to whoever implements it.
+
+- **R38 — Operator-facing text is Traditional Chinese.** The operator reads cues aloud in a Taiwan
+  hearing room, so the interface speaks the same language as the material. This does not loosen the
+  English-only codebase rule in `AGENTS.md`, which governs identifiers, comments, log output and test
+  assertions — a displayed string is none of those. Log files stay English so they remain greppable.
+- **R39 — No dead ends.** Every reachable state renders something that says what is happening and
+  what the operator can do. This includes failure states, which are the ones that get skipped: an
+  undetermined local/remote verdict, a denied macOS audio-capture permission, a capture device that
+  disappears mid-session, an advisor host that does not answer.
+- **R40 — A control is never live before its precondition is met, and an unmet precondition must
+  name what is missing.** A disabled control with no explanation is indistinguishable from a broken
+  one. Where a precondition is a *credential or a host* the dependent control is disabled; where the
+  whole capability is unconfigured the control is **hidden**, because offering something that cannot
+  work is worse than not offering it.
+- **R41 — Choices that cost something warn before they take effect**, not after. Four kinds cost
+  something: disk consumption, discarding warmed model state, sending data off the machine, and
+  producing text that has not been verified.
+- **R42 — The three kinds of advisor output are visually distinct, and the advisor's liveness is
+  visible while capture runs.** Retrieved pre-written text is safe to read aloud; generated text is
+  not (**R30**); a staff override is a human instruction. A reader glancing at the screen mid-sentence
+  must not have to work out which one they are looking at.
+- **R43 — The LAN surface is not confidential, and the operator is told so.** Remote pages are served
+  over plain HTTP (**V13**), so the transcript and the access code cross the network in the clear.
+  Nothing may be rendered to a remote browser that is not already in the transcript, and the local
+  page states plainly that remote viewing is unencrypted.
+- **R44 — The audio archive directory is operator-specified**, for the same reason as the model cache
+  (**R19**): at 48 kHz two tracks reach roughly 2.1 GB for a three-hour hearing, which may not belong
+  on the internal drive.
+
+### Screens
+
+| State | Local | Remote | Renders |
+|---|---|---|---|
+| Access | no prompt | access code | Remote entry only (**V37**, and the verdict must fail closed *loudly*) |
+| Role | selection | selection | Speaker view vs staff view |
+| Configure | settings form | **✗** | Blank on first run, refilled from `.env` afterwards |
+| Pre-flight | full panel | **waiting state** | The single place per-meeting choices are made (**R27**, **R35**) |
+| Running | transcript, advisor, meters, Stop | transcript, advisor, cue injection | Control actions are local-only (**R34**) |
+
+### Persisted fields — the settings form
+
+Typed, so they cannot be re-enumerated (**R33**). This inventory is normative; the plan implements
+it rather than restating it.
+
+| # | Field | Required | When absent |
+|---|---|---|---|
+| 1 | Model cache directory | **yes** | Nothing to download weights into — the one field that blocks everything |
+| 2 | Audio archive directory | only to retain audio | Retention unavailable (**R44**) |
+| 3 | Qdrant URL | no | Local mode; RAG still works (**V29**) |
+| 4 | Qdrant credential 🔒 | no | Local mode |
+| 5 | Embedding model name | no | Has a default |
+| 6 | LLM base URL | no | LLM advisor unavailable (**R28**) |
+| 7 | LLM credential 🔒 | no | — |
+| 8 | LLM model name | no | Has a default |
+| 9 | ASR model | no | Has a default. Persisted rather than per-meeting — see *Decided and closed* |
+
+Credential fields render as `type="password"` with a reveal toggle; the value behind them is always
+the real one, never a sentinel (**R32**).
+
+### Per-meeting controls — the pre-flight panel
+
+Not persisted (**R33**); rebuilt from live enumeration and defaults on every launch. Pressing Start
+commits all of them for the session.
+
+| Control | Kind | Default |
+|---|---|---|
+| Microphone | dropdown | system default (**R26**) |
+| Retain dual-track audio | toggle | off (**R16**) |
+| RAG advisor | toggle **plus a readiness line** | on (**R36**) |
+| LLM advisor | toggle | off, hidden unless configured (**R28**) |
+| Active capture backend | read-only indicator | auto-detected (**R7**) |
+| Input level meters | read-only | — |
+| **Start** | button | disabled until ready (**R24**, **R25**) |
+
+### Enablement, disclosure and warnings
+
+The normative answer to "what does ticking this do". Nothing outside this table changes state as a
+side effect of another control.
+
+| Control | Live only when | Acting on it triggers |
+|---|---|---|
+| Qdrant credential | Qdrant URL is non-empty | — |
+| LLM credential, LLM model name | LLM base URL is non-empty | — |
+| **LLM advisor** toggle | **hidden entirely** unless LLM base URL is configured | ⚠️ generated text is unverified — not safe to read aloud (**R30**) |
+| **RAG advisor** toggle | the index reports at least one chunk | — (the readiness line always shows chunk count and build date, armed or not — **V34**) |
+| **Retain dual-track audio** | an audio archive directory is configured (**R44**) | ⚠️ disk estimate for the expected meeting length, plus the reminder that recording carries consent expectations (**R4**) |
+| Model cache directory | always | 📁 folder chooser (**V45**) |
+| Audio archive directory | always | 📁 folder chooser (**V45**) |
+| ASR model | always | ⚠️ returns to `warming` for minutes, possibly preceded by a download (**V33**) |
+| Embedding model name | always | ⚠️ the existing index was built with a different model and must be rebuilt (**V36**) |
+| Qdrant URL / LLM base URL pointing off-machine | always | ⚠️ queries and credential leave this machine (**R4** — the operator's call, but an informed one) |
+| **Start** | readiness is `ready` | Commits every per-meeting choice and opens the streams (**R27**) |
+
 ---
 
-# 🔬 Phase 7 — Verified constraints
+# 🔬 Verified constraints
 
 Measured or read from source, not inferred. Each is dated to this investigation (2026-08-07,
 macOS 26.6). Re-measure rather than assume if any becomes load-bearing again.
@@ -165,6 +267,50 @@ macOS 26.6). Re-measure rather than assume if any becomes load-bearing again.
   quantized in MLX form, roughly 5x faster than `large-v3`. Candidate for **R8**/**R11**.
 - **V5** — Whisper has a single `zh` token and was trained on mixed Simplified/Traditional
   text, so Traditional output is not guaranteed. Relevant to **R10**.
+
+## The ASR field moved after this plan was written
+
+Read from published sources and vendor model cards on **2026-08-10**, **not measured on this
+hardware** — which is exactly why **R11** is satisfied by a local bake-off rather than by these
+numbers. Treat every figure here as a reason to test, not as a result.
+
+- **V38 — Google's Gemma 4 (2026-06) has native audio ASR and diarization, and is still unusable
+  here.** The 12B unified model is encoder-free, projecting raw 16 kHz audio directly into the
+  embedding space, Apache 2.0; the E2B/E4B edge variants keep a 300M conformer audio encoder with a
+  30-second ceiling. Four independent blockers: a hands-on report found **`mlx-vlm` silently ignores
+  the audio input** (this project's runtime is Python + MLX, and Swift is the only working MLX path);
+  BF16 needs ~23.9 GB and quantization degrades transcription; two `Transcriber` instances each hold
+  their own model, so it would force an architectural rewrite; and Google published no WER at all.
+- **V39 — Qwen3-ASR (0.6B / 1.7B, Apache 2.0) outperforms the model this plan selected.** Third-party
+  Apple Silicon measurements on an M5 Pro: 1.32% WER at 5-bit against WhisperKit `large-v3-turbo`'s
+  1.71%, RTF 0.027, 1.92 GB resident; Chinese CER 7.71 on FLEURS. 30 languages plus 22 Chinese
+  dialects including Cantonese. The MLX port accepts a **numpy array** directly, which is the exact
+  shape `transcriber.py` already passes to `mlx_whisper.transcribe()`.
+- **V40 — Qwen3-ASR's context biasing is a trained-in capability, not a decoder trick.** The model
+  card's own usage is `prompt="Vocabulary: ..."`. This is materially different from Whisper's
+  `initial_prompt`, and it opens a path this plan does not contain: the same `context/docs/` knowledge
+  base could bias ASR *and* serve RAG.
+- **V41 — Qwen3-ASR exposes no `no_speech_threshold` equivalent, and advertises singing and
+  music-with-backing-track as supported input.** The public API surfaces only `finish_reason`
+  (`eos` / `repetition` / `length`). Today `transcriber.py` relies on `no_speech_threshold=0.6` plus a
+  hallucination blacklist. For this product, transcribing music is a **negative** capability: a
+  Spotify track becomes lyrics attributed to `Participant`. Directly threatens **R37**.
+- **V42 — Neither candidate solves Traditional Chinese.** Qwen3-ASR's language list contains only
+  `Chinese (zh)`, exactly as Whisper has a single `zh` token (**V5**). Script control remains a
+  post-processing concern; whether a Traditional-script context prompt biases the output is untested.
+- **V43 — Parakeet TDT v3 is the throughput leader and is excluded outright**: ~25 European languages,
+  no Chinese. **R8** disqualifies it regardless of speed.
+- **V44 — `mlx-qwen3-asr` is a community reimplementation, not a vendor port.** Apache 2.0 over
+  official weights, single maintainer. For a product whose premise is running offline forever, that is
+  a supply-chain consideration to decide deliberately rather than discover later.
+
+## The web framework has no folder picker
+
+- **V45 — Unverified.** Streamlit has no directory-selection widget; `st.file_uploader` uploads file
+  contents, which is the wrong operation for **R19** and **R44**. Because both fields render only on
+  the local machine (**R34**), a native macOS `choose folder` dialog invoked from the server process is
+  available in principle. Whether that dialog can be raised from inside a Streamlit callback without
+  blocking the script re-run has not been tested, and the fallback is a validated text field.
 
 ## Core Audio process tap is viable
 
@@ -352,6 +498,9 @@ requirement it follows from.
 | Deleting `.env` outright | The cache directory must stay user-choosable; large weights may not belong on the internal drive. `.env` survives as a machine-written form snapshot. | R18, R19, R32 |
 | A separate local intent model to gate the LLM | The RAG score is already an intent judgement and costs microseconds; a second model would contend for the NPU that `201eeea` exists to unblock. | V22, V23 |
 | RAG backends other than Qdrant | Retrieval-as-a-service has no standard interface — Qdrant, Weaviate, Pinecone and Chroma each have their own API. One vendor beats an abstraction over four. | R28, R31 |
+| Gemma 4 in the live ASR path | Audio is silently dropped on the Python MLX path this project runs on, BF16 needs ~24 GB and quantization degrades it, and no WER was ever published. Its diarization is attractive but belongs to the offline cleanup pass, not the live path. | R11, V38 |
+| Parakeet TDT v3 | Fastest open model measured, and it does not support Chinese. | R8, V43 |
+| Choosing the ASR model from published benchmarks | Every leaderboard measures word error on speech; none measures whether music becomes an utterance, which is the failure this product cannot absorb. | R11, R37, V41 |
 | Relying on a context-overflow error code | Ollama truncates silently and does not forward `num_ctx`; vLLM errors where the spec says truncate. Own the bound locally instead. | V26, V32 |
 | macOS Keychain for credentials | Plaintext `.env` plus UI masking is consistent with a product that already stores full meeting transcripts in plaintext under `history/` — the credential is not the weakest link, and a platform binding buys little. Masking still earns its place against shoulder-surfing and screen sharing. | R32 |
 | Three-state sentinel handling for masked credential fields | Unnecessary once the settings form renders **only locally** (**R34**): the field always carries the real value, so writing it back is idempotent. There is no way to save a row of asterisks over a real key. | R32, R34 |

@@ -27,7 +27,9 @@ DECISIONS_DIR = os.path.join(REPO_ROOT, "docs", "decisions")
 # not a definition, which is why the dash is part of the pattern.
 DEFINITION = re.compile(r"^- \*\*(R\d+|V\d+)\*{0,2}\s*(?:—|--)", re.M)
 CITATION = re.compile(r"\b([RV]\d+)\b")
-PLAN_NUMBER = re.compile(r"\b7\.\d+\b")
+# Plan sections are 7.1 through 7.7. The guards keep prose decimals out: a
+# measured "CER 7.71" must not read as a citation of section 7.7.
+PLAN_NUMBER = re.compile(r"(?<!\d)7\.\d(?![\d.])")
 
 
 def read(path):

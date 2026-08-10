@@ -45,25 +45,54 @@ with an English-only codebase.
 Ordered so each step is independently shippable and the riskiest work lands last. Every item
 cites the requirements it satisfies.
 
-## 7.1 — Multilingual ASR — 🔴 do first
+## 7.1 — ASR bake-off, then a default — 🔴 do first
 
-Satisfies **R8, R10, R11**. Addresses **V1, V2, V3**.
+Satisfies **R8, R10, R11, R37**. Addresses **V1, V2, V3**; candidates and their traps are **V4, V5,
+V38–V44**.
 
-1. Default to `mlx-community/whisper-large-v3-turbo` (**V4**).
-2. **Delete `MULTILINGUAL_MODE`.** `turbo` is multilingual unconditionally, so the ASR half of
-   the flag has no meaning; the embedding half becomes a `build_index.py` argument recorded in
-   the index. The runtime environment variable disappears entirely.
-3. Bias decoding toward Traditional Chinese with an `initial_prompt` (**V5**). No OpenCC in the
-   live path — see *Decided and closed*.
-4. Re-measure latency: `turbo` is slower than `distil`, and two tracks share `NPU_LOCK`. Confirm
+This item previously named a winner before the field had been examined. **V38–V44**, read on
+2026-08-10, changed the picture: a stronger candidate exists (**V39**), it brings a capability the
+plan never considered (**V40**), and it brings a specific regression against **R37** (**V41**).
+**R11** asks for a deliberate choice, so this item measures rather than asserts.
+
+| Candidate | Why it is here | Why it might lose |
+|---|---|---|
+| `whisper-large-v3-turbo` | Incumbent path, `mlx_whisper` already wired in, has `no_speech_threshold` | Weaker accuracy; script not guaranteed (**V5**) |
+| Qwen3-ASR 1.7B (MLX) | Better on every published number; trained-in context biasing (**V39, V40**) | No no-speech gate and transcribes music (**V41**); community port (**V44**) |
+| Qwen3-ASR 0.6B (MLX) | Faster again, which matters under a shared `NPU_LOCK` | Accuracy cost |
+
+Measure in this order. **The first one decides; it is not a tie-breaker:**
+
+1. **False-trigger rate on non-speech** (**R37**) — music, notification chimes and keyboard noise,
+   counting how many lines reach the buffer as `Participant`. No published benchmark covers this, and
+   it is the failure that fires a cue at the worst possible moment.
+2. **Code-switching** on real bilingual audio (**R8**), and which script the Chinese arrives in
+   (**R10**, **V42**).
+3. **Latency with both tracks running**, since the two instances share `NPU_LOCK`. Confirm
    `audio_queue` does not resume dropping frames — that regression was only fixed in `201eeea`.
+4. **Whether context biasing earns its place** (**V40**) — the same terms, with and without.
 
-Already favourable: no architectural change is needed for code-switching, because each VAD
-segment is a separate `transcribe()` call with no `language` argument, so language is
-auto-detected per chunk. Intra-*sentence* code-switching stays weak — a Whisper limitation.
+Then, and only then:
 
-Open risk: `turbo` is reportedly weaker than `large-v3` on some languages. Mandarin is generally
-fine, but measure on real meeting audio rather than inferring from specs.
+1. Write the winner in as the default and record the measurements as new constraints.
+2. **Delete `MULTILINGUAL_MODE`.** Every candidate is multilingual unconditionally, so the ASR half of
+   the flag has no meaning; the embedding half becomes a `build_index.py` argument recorded in the
+   index. The runtime environment variable disappears entirely.
+3. **Rebuild the anti-hallucination defence for whichever model wins.** Whisper's ghost strings and an
+   LLM-based model's repetition loops are different failures, so the blacklist at
+   `transcriber.py:163` cannot simply carry over. If the winner has no `no_speech_threshold`
+   equivalent (**V41**), **R37** has to be met upstream — stricter VAD, or an energy/duration gate
+   ahead of `inference_queue`.
+
+**Blocked on something this repo does not have: audio fixtures.** `history/` holds real meetings and
+is off limits, so the test material has to be recorded deliberately for the purpose. That recording is
+the first task of this item, not an afterthought.
+
+Already favourable: code-switching needs no architectural change, because each VAD segment is a
+separate call with no language argument, so language is auto-detected per chunk. Intra-*sentence*
+code-switching stays weak in every candidate.
+
+No OpenCC in the live path regardless of winner — see *Decided and closed*.
 
 ## 7.2 — Core Audio process tap, then make it the default
 
@@ -131,23 +160,24 @@ editor (**R18**).
 
 ### The settings form
 
-Persisted, because these were typed and cannot be re-enumerated (**R33**):
+**The field inventory, the enablement rules and the warnings are specified in
+[REQUIREMENTS.md](REQUIREMENTS.md) under *The control surface* (**R38–R44**) — nine fields, one of
+them required.** This item implements that table; it must not restate it, because two copies of a UI
+spec is how they start disagreeing.
 
-| # | Field | When absent |
-|---|---|---|
-| 1 | Model cache directory | **The only required field** — without it there is nothing to download Whisper into |
-| 2 | Qdrant URL | Blank ⇒ local mode; RAG still works (**V29**) |
-| 3 | Qdrant credential 🔒 | Blank ⇒ local mode |
-| 4 | Embedding model name | Has a default |
-| 5 | LLM base URL | Blank ⇒ LLM advisor unavailable (**R28**) |
-| 6 | LLM credential 🔒 | — |
-| 7 | LLM model name | Has a default |
-| 8 | ASR model | Has a default (`turbo`). Here rather than pre-flight — see *Decided and closed*. Changing it re-enters `warming` (**V33**), and the UI must say so. |
+What is left for the plan is the work the table does not describe:
 
-**Masked fields are plain `type="password"` rendering, not a separate value.** The eye control
-flips the input type; the value is the real one throughout. Streamlit's password input has no
-built-in reveal, so the toggle is a small piece of work rather than free. Because the form
-renders only locally (below), no sentinel handling is needed — see *Decided and closed*.
+- **Masked fields are plain `type="password"` rendering, not a separate value.** The eye control flips
+  the input type; the value is the real one throughout. Streamlit's password input has no built-in
+  reveal, so the toggle is a small piece of work rather than free. Because the form renders only
+  locally (below), no sentinel handling is needed — see *Decided and closed*.
+- **The two folder choosers are the only genuinely unknown widget** (**V45**). Test the native macOS
+  dialog first; fall back to a validated text field rather than blocking on it.
+- **The warnings are part of this item, not polish** (**R41**). Re-warming, index invalidation and
+  off-machine egress each have to be stated at the moment the operator changes the field, and every
+  disabled control has to say which field would enable it (**R40**).
+- **Cross-field enablement runs on every re-run**, since Streamlit re-executes the whole script.
+  Derive the disabled/hidden state from the current field values each pass rather than storing it.
 
 ### `is_local` gates the whole screen, and must fail closed *loudly*
 
@@ -157,11 +187,13 @@ already exists (**V37**) and needs two changes:
 
 1. **Gate the settings form and pre-flight panel on it**, not just the PIN prompt. This also
    keeps credentials off the LAN — remote pages are served over plain HTTP (**V13**), so a
-   real API key rendered into a remote browser would cross the network in the clear.
+   real API key rendered into a remote browser would cross the network in the clear (**R43**).
+   The same item states the unencrypted-LAN fact on the local page, since the transcript crosses
+   the network whether or not a credential does.
 2. **Flip the `except` branch to fail closed** — treat an undetectable host as remote. But a
    silent fail-closed is a bricked app: the operator would face a control panel with no Start
-   button and no explanation. **The failure must be stated on screen** ("cannot determine whether
-   this is a local connection; treating as remote").
+   button and no explanation. **The failure must be stated on screen** (**R39**) — "cannot determine
+   whether this is a local connection; treating as remote".
 
 Resulting screen flow:
 
@@ -202,29 +234,20 @@ machine to `warming` (**V33**) — expected, and the UI says why.
 
 ### The pre-flight panel
 
-Once `ready`, the operator sees one screen holding **every per-meeting decision** (**R27**), so
-the plan items below do not each grow their own UI:
+Once `ready`, the operator sees one screen holding **every per-meeting decision** (**R27**), so the
+plan items below do not each grow their own UI. **The seven controls, their defaults and their
+enablement rules are specified in [REQUIREMENTS.md](REQUIREMENTS.md).** Which item contributes each:
+microphone from 7.3, retention from 7.7, both advisor rows from 7.5, the backend indicator from 7.2,
+and the level meters already exist as `st.progress(rms)`.
 
-| Control | Kind | Default | From |
-|---|---|---|---|
-| Microphone | dropdown | system default | 7.3 / **R26** |
-| Retain dual-track audio | toggle | off | 7.7 / **R16** |
-| RAG advisor | toggle + **readiness** | on | 7.5 / **R36** |
-| LLM advisor | toggle | off; hidden unless configured | 7.5 / **R28** |
-| Active capture backend | **read-only** indicator | auto-detected | 7.2 / **R7** |
-| Input level meters | read-only | — | already built (`st.progress(rms)`) |
-| **Start** | button | disabled until `ready` | **R24, R25** |
+Two consequences worth carrying in the plan:
 
-The RAG row is a **status, not a checkbox** — `知識庫：148 chunks · 2026-08-05 編譯` versus
-`⚠️ 0 chunks — 尚未編譯`. That turns an invisible precondition (**V34**) into a visible one at
-the moment the operator can still act on it.
-
-Pressing Start **commits** these choices and opens the streams. They are fixed for the session;
-changing one means stopping and starting again. That keeps stream setup and the audio writer
-configured once, rather than being mutable mid-capture.
-
-None of these are persisted (**R33**) — the panel is rebuilt from live enumeration and defaults
-on every launch.
+- **The RAG row is a status, not a checkbox.** Chunk count and build date show whether the defence can
+  fire at all, armed or not — an invisible precondition (**V34**) made visible while the operator can
+  still act on it (**R36**, **R40**).
+- **Pressing Start commits everything and opens the streams.** Choices are fixed for the session;
+  changing one means stopping and starting again. That is what lets stream setup and the audio writer
+  be configured exactly once instead of being mutable mid-capture.
 
 ### Warm eagerly, open streams lazily
 
@@ -251,6 +274,7 @@ back rather than the request being quietly forgotten.
 | Setting | Real lifecycle | Belongs in |
 |---|---|---|
 | `HF_HOME` | once per machine | `.env`, written by the app |
+| Audio archive directory | once per machine | `.env`, written by the app (**R44**) |
 | Advisor hosts, credentials, model names | once per machine | `.env`, written by the app (**R32**) |
 | ASR model | once per machine | `.env`; changing it re-warms (**V33**) |
 | `ENABLE_LOCAL_RAG` and the LLM toggle | per session | pre-flight panel |
@@ -312,11 +336,11 @@ Required changes:
    (**V25**) already models the in-flight state.
 3. **Take the remote call off the poll thread** (**V27**) with a timeout and single-flight
    semantics. The loop's coalescing behaviour is desirable — make it deliberate.
-4. **Label by vendor, and mark generated content unverified** (**R29, R30**). `🛡️ [Aegis
+4. **Label by vendor, and mark generated content unverified** (**R29, R30, R42**). `🛡️ [Aegis
    Triggered]` and `⚡ [STAFF OVERRIDE]` exist; a third label needs to be visually distinct. This
    is a safety boundary, not decoration — a hallucinated figure read aloud at an interpellation is
-   worse than no cue.
-5. **Surface liveness** (**R36**, **V34**, **V35**). Two places:
+   worse than no cue, and **R42** is why the distinction has to survive a glance rather than a read.
+5. **Surface liveness** (**R36, R42**, **V34**, **V35**). Two places:
    - *Pre-flight*: the RAG row shows chunk count and build date, so an unbuilt or empty index is
      caught before the meeting rather than during it.
    - *Running*: show the most recent similarity score. `local_advisor.py:84` already computes and
@@ -367,12 +391,14 @@ dropping residual Whisper hallucinations.
 
 ## 7.7 — Optional dual-track audio retention
 
-Satisfies **R3, R16**; bounded by **R4**.
+Satisfies **R3, R16, R44**; bounded by **R4**; warned about per **R41**.
 
 A **toggle on the pre-flight panel** (7.4, **R27**), **default off** — a per-meeting decision,
 committed when Start is pressed and fixed for the session. Off by default on disk-space grounds
-and because recording carries consent expectations the operator should choose deliberately.
-`history/` is already gitignored.
+and because recording carries consent expectations the operator should choose deliberately, which is
+why ticking it warns with a size estimate rather than silently starting to fill a disk (**R41**).
+The toggle is unavailable until an archive directory is configured (**R44**); files land there, not
+under `history/`, though `history/` is already gitignored either way.
 
 Because the choice is known before the streams open, the writer thread is configured once at
 Start rather than having to be attachable to a running capture.
@@ -390,8 +416,11 @@ Constraints, ordered by how easily each silently ruins the feature:
   same pattern already used for `inference_queue`. A load-bearing invariant, not a preference.
 - **Lossless only** — lossy undermines evidentiary value. Python's stdlib `wave` module needs
   **no new dependency**; FLAC is a later size optimization.
-- **Pair filenames with the transcript** — `history/Meeting_<session_id>_mic.wav` and
-  `_system.wav` beside `Meeting_<session_id>.md`, so 7.6 can find them without guessing.
+- **Pair filenames with the transcript** — `Meeting_<session_id>_mic.wav` and `_system.wav`, named
+  from the same `session_id` as `history/Meeting_<session_id>.md`, so the cleanup script can find them
+  without guessing. They live in the configured archive directory rather than beside the transcript
+  (**R44**), so that script resolves the pair by `session_id` plus one configured path — not by
+  assuming a sibling file.
 - **Record the precise session start time**, so a transcript timestamp converts to an offset
   into the WAV. Without it, "jump to this moment" — the point of corroboration — does not work.
 

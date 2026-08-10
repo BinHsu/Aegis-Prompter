@@ -84,13 +84,13 @@ python tools/gen_filemap.py
 
 ## `tools/`
 
-### `tools/check_state.py` — 128 lines
+### `tools/check_state.py` — 130 lines
 
 Checks that the requirement documents still hold together.
 
-- `read()` (L33)
-- `decision_records()` (L38)
-- `main()` (L47)
+- `read()` (L35)
+- `decision_records()` (L40)
+- `main()` (L49)
 
 ### `tools/gen_filemap.py` — 152 lines
 
