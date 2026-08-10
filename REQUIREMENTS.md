@@ -146,9 +146,10 @@ Stated without implementation. Each item is something the product must do, or mu
 - **R26 — Audio input is selectable from the web page**, in the manner of Zoom or Meet web:
   a sensible default, freely overridable.
 - **R27 — Every per-meeting decision is made on one pre-Start panel.** The screen shown before
-  capture begins is the single place the operator chooses microphone, whether to retain audio,
-  and which advisors are active — reviewed together, then committed by pressing Start. No
-  per-meeting choice lives anywhere else.
+  capture begins is the single place the operator chooses the microphone and which advisors are
+  active — reviewed together, then committed by pressing Start. Sticky machine preferences that
+  also appear on that panel (**R16**, **R46**) are disclosed and may be changed there, but they
+  are not per-meeting decisions. No per-meeting choice lives anywhere else.
 - **R34 — Machine-control actions are local-only; tactical actions may be remote.** Start and
   Stop, device selection, backend configuration, and audio retention operate the machine that is
   capturing, and are available only on that machine. Viewing the transcript and injecting cues
@@ -229,6 +230,11 @@ design detail left to whoever implements it.
 
 ### Screens
 
+Local states are **sequential**, not simultaneous: Access → Role → Configure → Pre-flight →
+Running. Configure and Pre-flight are two states, not one combined page — the operator finishes
+machine settings before the Start panel is offered. Remote devices never see Configure or
+Pre-flight (**R34**); before Start they see the waiting state (**R35**).
+
 | State | Local | Remote | Renders |
 |---|---|---|---|
 | Access | no prompt | access code | Remote entry only (**V37**, and the verdict must fail closed *loudly*) |
@@ -240,19 +246,24 @@ design detail left to whoever implements it.
 ### Persisted fields — the settings form
 
 Typed, so they cannot be re-enumerated (**R33**). This inventory is normative; the plan implements
-it rather than restating it.
+it rather than restating it. The `.env` key column is part of that inventory — inventing keys at
+implementation time is how the template and the form drift apart.
 
-| # | Field | Required | When absent |
-|---|---|---|---|
-| 1 | Storage root | **yes** | Nothing to download weights into — the one field that blocks everything (**R48**) |
-| 2 | Audio archive override | no | Recordings go to `<root>/AegisPrompter/audio` (**R44**) |
-| 3 | Qdrant URL | no | Local mode; RAG still works (**V29**) |
-| 4 | Qdrant credential 🔒 | no | Local mode |
-| 5 | Embedding model name | no | Has a default |
-| 6 | LLM base URL | no | LLM advisor unavailable (**R28**) |
-| 7 | LLM credential 🔒 | no | — |
-| 8 | LLM model name | no | Has a default |
-| 9 | ASR model | no | Has a default. Persisted rather than per-meeting — see *Decided and closed* |
+| # | Field | `.env` key | Required | When absent |
+|---|---|---|---|---|
+| 1 | Storage root | `STORAGE_ROOT` | **yes** | Nothing to download weights into — the one field that blocks everything (**R48**) |
+| 2 | Audio archive override | `AUDIO_ARCHIVE_DIR` | no | Recordings go to `<root>/AegisPrompter/audio` (**R44**) |
+| 3 | Qdrant URL | `QDRANT_URL` | no | Local mode; RAG still works (**V29**) |
+| 4 | Qdrant credential 🔒 | `QDRANT_API_KEY` | no | Local mode |
+| 5 | Embedding model name | `EMBEDDING_MODEL` | no | Has a default |
+| 6 | LLM base URL | `LLM_BASE_URL` | no | LLM advisor unavailable (**R28**) |
+| 7 | LLM credential 🔒 | `LLM_API_KEY` | no | — |
+| 8 | LLM model name | `LLM_MODEL` | no | Has a default |
+| 9 | ASR model | `ASR_MODEL` | no | Has a default. Persisted rather than per-meeting — see *Decided and closed* |
+
+Derived and written by the app, not typed as free-form settings fields: `HF_HOME` =
+`<STORAGE_ROOT>/AegisPrompter/models` (**R48**), and `ARCHIVE_AUDIO` = the sticky retention
+switch (**R16**).
 
 Credential fields render as `type="password"` with a reveal toggle; the value behind them is always
 the real one, never a sentinel (**R32**).
@@ -462,10 +473,11 @@ Verified with Command Line Tools `clang` only — **no Xcode required**.
   state and re-enters `warming` for both instances — minutes, possibly preceded by a download.
   *Unverified*: whether `mlx_whisper` caches by repo path, and so whether switching models back
   and forth holds two copies in memory.
-- **V37 — `is_local` already exists and fails open.** `app.py:59-71` derives it from the Host
-  header (`localhost` / `127.0.0.1` / empty) and currently uses it only to skip the PIN gate. The
-  `except` branch sets `is_local = True`, so a detection failure silently grants local
-  privileges.
+- **V37 — `is_local` already exists and fails open on two paths.** `app.py:59-71` derives it from
+  the Host header and currently uses it only to skip the PIN gate. Local is granted when the host
+  contains `localhost` or `127.0.0.1`, when the host is **empty** (`or not host`), and when any
+  exception escapes the `try` (`except: is_local = True`). Re-read from source on 2026-08-10; both
+  non-localhost branches silently grant local privileges.
 
 ## The advisor seam already exists, and so does its gate
 
@@ -553,6 +565,16 @@ Verified with Command Line Tools `clang` only — **no Xcode required**.
 - **V21** — `huggingface_hub` download progress is reported through **tqdm on stdout, not
   through `logging`**. Tailing `logs/aegis_engine_*.log` will therefore miss the download phase,
   which is exactly the phase **R23** most needs to show.
+
+## The live transcript path is already lossy
+
+- **V48 — Verified from `transcriber.py` on 2026-08-10.** Before any line reaches
+  `DialogueBuffer`, the pipeline discards (a) frames `webrtcvad` marks non-speech, (b) segments
+  shorter than 0.3 s, (c) empty / single-character ASR output, and (d) strings on the
+  anti-hallucination blacklist. None of that material appears in `history/Meeting_*.md`. So a
+  session with retention off has **no** recoverable record of what the filters dropped — which is
+  why **R45** exists, and why **R3** cannot be read as "the transcript is complete" without also
+  saying what happens to the audio.
 
 ---
 

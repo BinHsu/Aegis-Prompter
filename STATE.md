@@ -45,6 +45,12 @@ with an English-only codebase.
 Ordered so each step is independently shippable and the riskiest work lands last. Every item
 cites the requirements it satisfies.
 
+**2026-08-10 review reordered the plan.** Microphone selection and retention both need the
+pre-flight panel; the cleanup script should see retention's filename contract; the 48 kHz capture
+path must exist before ASR latency / false-trigger numbers are treated as final. Plan numbers
+below are the new order — older commits that say "7.4" for configuration mean the *configuration
+work*, not today's section number.
+
 ## 7.1 — ASR bake-off, then a default — 🔴 do first
 
 Satisfies **R8, R10, R11, R37**. Addresses **V1, V2, V3**; candidates and their traps are **V4, V5,
@@ -88,58 +94,31 @@ Then, and only then:
 is off limits, so the test material has to be recorded deliberately for the purpose. That recording is
 the first task of this item, not an afterthought.
 
+**Provisional until the 48 kHz path lands.** Today's `transcriber.py` opens streams at 16 kHz.
+Retention and the process tap make 48 kHz + software resample mandatory (**V12**, **V7**, decided
+in `docs/decisions/0001-audio-archive-sample-rate.md`). A winner chosen only on the 16 kHz path is
+allowed as a *default to wire in*, but **R37** false-trigger rate and dual-track latency must be
+re-measured on the production resample path before the bake-off is closed — otherwise the numbers
+describe a pipeline the product is about to abandon.
+
 Already favourable: code-switching needs no architectural change, because each VAD segment is a
 separate call with no language argument, so language is auto-detected per chunk. Intra-*sentence*
 code-switching stays weak in every candidate.
 
 No OpenCC in the live path regardless of winner — see *Decided and closed*.
 
-## 7.2 — Core Audio process tap, then make it the default
+## 7.2 — Configuration and startup: one new file plus `app.py`
 
-Satisfies **R1, R5, R6, R7**. Built on **V6–V11**; **V12** is the first unknown to hit.
-
-1. Add `src/native/aegis_tap.m` — a global mono mixdown tap, compiled by `setup_mac.sh`.
-2. `global_state.py` launches it as a subprocess on start, SIGTERMs it on stop.
-3. **Auto-detect rather than configure**: use the tap when the OS supports it and the device
-   appears, otherwise BlackHole. Surface which is active in the UI — this is a capability, not a
-   preference.
-4. Prove it in real meetings, **then** make the tap the default (**R7**).
-5. Keep the BlackHole fallback permanently for macOS older than 14.2 (**R6**).
-
-Largest ongoing cost: the aggregate device binds a specific output device as its main
-sub-device, so it goes stale when the operator switches output. Needs a
-`kAudioHardwarePropertyDefaultOutputDevice` listener to rebuild. BlackHole does not have this
-problem — the only respect in which it is superior.
-
-## 7.3 — Microphone selection in the web UI
-
-Satisfies **R26**. Settled by **V13, V14**: this remote-controls the *host Mac's* devices; it is
-not a browser device picker.
-
-Scope shrinks because of **R1**: if system audio is "everything", there is no source to choose.
-So this contributes a **microphone dropdown** and a read-only **active backend indicator** — not
-a screen of its own. Both live on the pre-flight panel defined in 7.4 (**R27**). Two dropdowns
-became one.
-
-The `st.progress(rms)` level meters already in `app.py` are exactly the meter Zoom shows beside
-its device picker, so the familiar UX needs no new visual work — and they are the existing
-example of **R36**, a component that shows it is alive while producing nothing.
-
-Trap: `Transcriber.__init__` preloads the model into the NPU (**V33**). Switching devices must
-**not** naively reconstruct a `Transcriber` — separate "change device" from "reload model".
-
-Bonus: a dropdown makes the hardcoded microphone-keyword bug (Known Issues) irrelevant.
-
-## 7.4 — Configuration and startup: one new file plus `app.py`
-
-Satisfies **R17–R25, R32–R35**. Addresses **V18, V19, V37**; enabled by **V20**; constrained by
-**V21, V33**.
+Satisfies **R17–R25, R32–R35, R38–R41, R43, R46–R48**. Addresses **V18, V19, V37, V46, V47**;
+enabled by **V20**; constrained by **V21, V33, V45**.
 
 ### There is no wizard — there is a form, and `.env` is its snapshot
 
 `.env` is not a configuration file the operator maintains; it is where the settings form
 persists itself (**R32**). That collapses what was previously described as a first-run wizard and
-a separate settings screen into **one screen**, which on first run simply renders blank.
+a separate settings screen into **one Configure state**, which on first run simply renders blank.
+Pre-flight is the **next** local state once readiness is `ready` — not a second copy of the form
+and not a single scrollable mash-up. See *Screens* in [REQUIREMENTS.md](REQUIREMENTS.md).
 
 `setup_mac.sh` keeps its current scope — Homebrew dependencies, `.venv`, `pip install`. Only the
 **model download** moves behind the UI (**R21**):
@@ -147,12 +126,12 @@ a separate settings screen into **one screen**, which on first run simply render
 ```
 bash setup_mac.sh          # brew + .venv + pip install (unchanged)
 streamlit run src/app.py
-  └─ settings form: blank on first run, refilled from .env afterwards   (R20, R32)
-     → operator fills the one required field                            (R19)
+  └─ Configure: blank on first run, refilled from .env afterwards       (R20, R32)
+     → operator fills the one required field                            (R19, R48)
      → app writes .env                                                  (R18)
      → downloads models, progress shown in the UI                       (R23)
      → warms the NPU
-     → Start unlocks                                                    (R24)
+     → Pre-flight unlocks                                               (R24)
 ```
 
 Reset is deleting `.env` (**R22**) — the form goes blank again. The operator never opens it in an
@@ -170,10 +149,10 @@ editor (**R18**). Three mechanics carry that:
 
 ### The settings form
 
-**The field inventory, the enablement rules and the warnings are specified in
-[REQUIREMENTS.md](REQUIREMENTS.md) under *The control surface* (**R38–R44**) — nine fields, one of
-them required.** This item implements that table; it must not restate it, because two copies of a UI
-spec is how they start disagreeing.
+**The field inventory (including `.env` keys), the enablement rules and the warnings are specified
+in [REQUIREMENTS.md](REQUIREMENTS.md) under *The control surface* (**R38–R48**) — nine fields, one of
+them required, plus derived `HF_HOME` and sticky `ARCHIVE_AUDIO`.** This item implements that table;
+it must not restate it, because two copies of a UI spec is how they start disagreeing.
 
 What is left for the plan is the work the table does not describe:
 
@@ -182,34 +161,43 @@ What is left for the plan is the work the table does not describe:
   reveal, so the toggle is a small piece of work rather than free. Because the form renders only
   locally (below), no sentinel handling is needed — see *Decided and closed*.
 - **The two folder choosers are the only genuinely unknown widget** (**V45**). Test the native macOS
-  dialog first; fall back to a validated text field rather than blocking on it.
+  dialog first; fall back to a validated text field rather than blocking on it. **Measure before
+  coding the happy path** — an untested `choose folder` call that blocks Streamlit's rerun bricks
+  Configure.
 - **The warnings are part of this item, not polish** (**R41**). Re-warming, index invalidation and
   off-machine egress each have to be stated at the moment the operator changes the field, and every
   disabled control has to say which field would enable it (**R40**).
 - **Cross-field enablement runs on every re-run**, since Streamlit re-executes the whole script.
   Derive the disabled/hidden state from the current field values each pass rather than storing it.
+- **Download progress cannot be tailed from the log** (**V21**). Capture tqdm/stdout (or use
+  `huggingface_hub` callbacks) into a structure `bootstrap.py` owns and the Configure view polls.
+  Inventing "just stream the log file" will miss the phase **R23** cares about.
+- **Show the access code on the local Configure / Pre-flight chrome**, not only as a console banner.
+  Remote staff still need a PIN (**R34**, **R43**); once Start is gated, staring at the terminal is
+  not an interface.
 
 ### `is_local` gates the whole screen, and must fail closed *loudly*
 
-**R34** makes this a screen-level gate rather than a per-widget decision: the pre-flight panel
-and the settings form both operate the capturing machine, so both are local-only. `is_local`
-already exists (**V37**) and needs two changes:
+**R34** makes this a screen-level gate rather than a per-widget decision: Configure and Pre-flight
+both operate the capturing machine, so both are local-only. `is_local` already exists (**V37**) and
+needs two changes:
 
-1. **Gate the settings form and pre-flight panel on it**, not just the PIN prompt. This also
-   keeps credentials off the LAN — remote pages are served over plain HTTP (**V13**), so a
-   real API key rendered into a remote browser would cross the network in the clear (**R43**).
-   The same item states the unencrypted-LAN fact on the local page, since the transcript crosses
-   the network whether or not a credential does.
-2. **Flip the `except` branch to fail closed** — treat an undetectable host as remote. But a
-   silent fail-closed is a bricked app: the operator would face a control panel with no Start
-   button and no explanation. **The failure must be stated on screen** (**R39**) — "cannot determine
-   whether this is a local connection; treating as remote".
+1. **Gate Configure and Pre-flight on it**, not just the PIN prompt. This also keeps credentials
+   off the LAN — remote pages are served over plain HTTP (**V13**), so a real API key rendered into
+   a remote browser would cross the network in the clear (**R43**). The same item states the
+   unencrypted-LAN fact on the local page, since the transcript crosses the network whether or not
+   a credential does.
+2. **Flip every fail-open branch to fail closed** — empty host and the bare `except` both grant
+   local today (**V37**). Treat an undetectable host as remote. But a silent fail-closed is a
+   bricked app: the operator would face a control panel with no Start button and no explanation.
+   **The failure must be stated on screen** (**R39**) — "cannot determine whether this is a local
+   connection; treating as remote".
 
 Resulting screen flow:
 
 ```
-local:   (no PIN)  →  role  →  settings + pre-flight  →  running
-remote:  PIN       →  role  →         ✗               →  running (or waiting)
+local:   (no PIN)  →  role  →  Configure  →  Pre-flight  →  running
+remote:  PIN       →  role  →      ✗      →   waiting    →  running
 ```
 
 **A remote device that arrives before Start needs a waiting state** (**R35**) — the speaker
@@ -222,16 +210,21 @@ because `app.py:27` auto-starts; removing that auto-start creates this state.
 
 | File | Change |
 |---|---|
-| `src/bootstrap.py` (new) | Zero project imports — stdlib plus `dotenv` only. Reads and writes `.env` atomically (**V46**), resolves the storage root and derives the fixed layout beneath it (**R48**), sets `os.environ["HF_HOME"]` *before* anything heavy loads, reports what already exists under the root, owns the readiness state machine. |
-| `.env.example` | **Regenerate to match the persisted inventory** — the nine settings fields plus `ARCHIVE_AUDIO`, with `MULTILINGUAL_MODE` removed. `AGENTS.md` makes this obligatory in the same change as the flag, and the template is currently a snapshot of the pre-Phase-7 scheme. |
-| `app.py` | Move `from global_state import ...` out of module scope into a function called only once configuration exists; drop the `app.py:27` auto-start (**V18**); add the settings form, the `is_local` gate, the waiting state, and Start gating. |
-| `transcriber.py` | **Untouched.** |
-| `local_advisor.py` | **Untouched** by this item (7.5 changes it). |
-| `global_state.py` | **Untouched**, until `ENABLE_LOCAL_RAG` becomes a UI toggle — a separate, smaller step. |
+| `src/bootstrap.py` (new) | Zero project imports — stdlib plus `dotenv` only. Reads and writes `.env` atomically (**V46**), resolves the storage root and derives the fixed layout beneath it (**R48**), sets `os.environ["HF_HOME"]` *before* anything heavy loads, reports what already exists under the root, owns the readiness state machine and download-progress surface for **R23**. |
+| `.env.example` | **Regenerate to match the persisted inventory** — the nine settings keys plus `ARCHIVE_AUDIO`, with `MULTILINGUAL_MODE` removed. `AGENTS.md` makes this obligatory in the same change as the flag, and the template is currently a snapshot of the pre-Phase-7 scheme. |
+| `app.py` | Move `from global_state import ...` out of module scope into a function called only once configuration exists; drop the `app.py:27` auto-start (**V18**); add Configure, the `is_local` gate, the waiting state, Pre-flight shell, and Start gating. |
+| `transcriber.py` | **Untouched** by this item. |
+| `local_advisor.py` | **Untouched** by this item (advisor backends change it later). |
+| `global_state.py` | **Untouched**, until `ENABLE_LOCAL_RAG` becomes a UI toggle — lands with the advisor-backend item. |
 
 Implementation ordering note: checking whether weights already exist is most reliably done via
 `huggingface_hub`'s cache API, but importing it fixes `HF_HOME` (**V19**). So `bootstrap.py` must
 set the path *first*, then import to inspect. Internal to that one file, but easy to get backwards.
+
+Also decide, in code review of this item, how `@st.cache_resource` on `get_global_state` is
+invalidated when Configure rewrites `.env` — today's singleton is created once per process and
+reads the environment in `_init_once`. Without an explicit rebuild path, saving a new storage root
+appears to work and then keeps using the old one.
 
 ### Readiness state machine
 
@@ -243,19 +236,26 @@ Start is `disabled` until `ready` (**R24**), which also satisfies **R25**: captu
 early because the control that begins it is not pressable. Changing the ASR model returns the
 machine to `warming` (**V33**) — expected, and the UI says why.
 
+Warm-up begins when configuration becomes complete (storage root saved, weights present or
+finished downloading) — **not** on every Streamlit rerun while the operator is still typing, and
+**not** deferred until Start (see departures below).
+
 ### The pre-flight panel
 
-Once `ready`, the operator sees one screen holding **every per-meeting decision** (**R27**), so the
-plan items below do not each grow their own UI. **The seven controls, their defaults and their
-enablement rules are specified in [REQUIREMENTS.md](REQUIREMENTS.md).** Which item contributes each:
-microphone from 7.3, retention from 7.7, both advisor rows from 7.5, the backend indicator from 7.2,
-and the level meters already exist as `st.progress(rms)`.
+Once `ready`, the operator sees one screen holding **every per-meeting decision** (**R27**), so
+later items do not each grow their own UI. **The controls, their defaults and their enablement
+rules are specified in [REQUIREMENTS.md](REQUIREMENTS.md).** This item ships the panel shell,
+Start/Stop, level meters (already `st.progress(rms)`), the sticky retention toggle's *disclosure*
+(**R46** — wiring the writer is a later item), and disabled/placeholder advisor rows until the
+advisor-backend item fills them. Microphone dropdown and active-backend indicator are filled by
+the items that follow — the panel must exist first.
 
 Two consequences worth carrying in the plan:
 
 - **The RAG row is a status, not a checkbox.** Chunk count and build date show whether the defence can
   fire at all, armed or not — an invisible precondition (**V34**) made visible while the operator can
-  still act on it (**R36**, **R40**).
+  still act on it (**R36**, **R40**). Until the Qdrant migration lands, read those facts from the
+  pickle (or show "index missing") rather than inventing a second source of truth.
 - **Pressing Start commits everything and opens the streams.** Choices are fixed for the session;
   changing one means stopping and starting again. That is what lets stream setup and the audio writer
   be configured exactly once instead of being mutable mid-capture.
@@ -284,20 +284,68 @@ back rather than the request being quietly forgotten.
 
 | Setting | Real lifecycle | Belongs in |
 |---|---|---|
-| `HF_HOME` | once per machine | `.env`, written by the app |
-| Audio archive directory | once per machine | `.env`, written by the app (**R44**) |
+| `STORAGE_ROOT` / derived `HF_HOME` | once per machine | `.env`, written by the app (**R48**) |
+| `AUDIO_ARCHIVE_DIR` | once per machine, optional | `.env`, written by the app (**R44**) |
 | Advisor hosts, credentials, model names | once per machine | `.env`, written by the app (**R32**) |
-| ASR model | once per machine | `.env`; changing it re-warms (**V33**) |
+| `ASR_MODEL` | once per machine | `.env`; changing it re-warms (**V33**) |
 | `ENABLE_LOCAL_RAG` and the LLM toggle | per session | pre-flight panel |
-| audio backend | capability, not preference | auto-detected (7.2) |
+| audio backend | capability, not preference | auto-detected (process-tap item) |
 | `ARCHIVE_AUDIO` | **sticky per machine** | pre-flight toggle that writes itself back to `.env` (**R16, R46**) |
 | microphone | per meeting, enumerable | pre-flight dropdown, not persisted (**R33**) |
-| `MULTILINGUAL_MODE` | — | **deleted** (7.1) |
+| `MULTILINGUAL_MODE` | — | **deleted** (ASR bake-off item) |
 | `PIP_CACHE_DIR` | during `pip install` only | `setup_mac.sh`, which already exports it |
+
+## 7.3 — Microphone selection in the web UI
+
+Satisfies **R26**. Settled by **V13, V14**: this remote-controls the *host Mac's* devices; it is
+not a browser device picker. **Depends on the Pre-flight panel from the configuration item** —
+without that panel there is nowhere shippable to put the control, so this is not independently
+shippable ahead of Configure/Pre-flight.
+
+Scope shrinks because of **R1**: if system audio is "everything", there is no source to choose.
+So this contributes a **microphone dropdown** and leaves the read-only **active backend indicator**
+to the process-tap item. Both live on the pre-flight panel (**R27**).
+
+The `st.progress(rms)` level meters already in `app.py` are exactly the meter Zoom shows beside
+its device picker, so the familiar UX needs no new visual work — and they are the existing
+example of **R36**, a component that shows it is alive while producing nothing.
+
+Trap: `Transcriber.__init__` preloads the model into the NPU (**V33**). Switching devices must
+**not** naively reconstruct a `Transcriber` — separate "change device" from "reload model".
+
+Bonus: a dropdown makes the hardcoded microphone-keyword bug (Known Issues) irrelevant.
+
+## 7.4 — Core Audio process tap, then make it the default
+
+Satisfies **R1, R2, R5, R6, R7**. Built on **V6–V11**; **V12** is the first unknown to hit and is
+**load-bearing** once 48 kHz archival is required.
+
+1. **Measure V12 on this machine before writing production code that assumes an answer.** Open a
+   PortAudio stream on a 48 kHz-only source (or the tap) at 16 kHz and at 48 kHz; record whether
+   the library resamples, which rate actually arrives in the callback, and whether `webrtcvad`
+   accepts the chosen rate for the block size in use. Until that measurement exists, the resample
+   design is a guess.
+2. Add `src/native/aegis_tap.m` — a global mono mixdown tap, compiled by `setup_mac.sh`.
+3. `global_state.py` launches it as a subprocess on start, SIGTERMs it on stop. **Microphone and
+   system-audio tracks stay separate all the way through** (**R2**) — the tap replaces BlackHole
+   as the *Participant* source; it must not be mixed into the mic track.
+4. **Auto-detect rather than configure**: use the tap when the OS supports it and the device
+   appears, otherwise BlackHole. Surface which is active on the pre-flight panel — this is a
+   capability, not a preference (**R7**).
+5. Prove it in real meetings, **then** make the tap the default (**R7**).
+6. Keep the BlackHole fallback permanently for macOS older than 14.2 (**R6**).
+
+Largest ongoing cost: the aggregate device binds a specific output device as its main
+sub-device, so it goes stale when the operator switches output. Needs a
+`kAudioHardwarePropertyDefaultOutputDevice` listener to rebuild. BlackHole does not have this
+problem — the only respect in which it is superior.
+
+After the 48 kHz callback path exists, finish the bake-off's deferred re-measurement (**R37**,
+dual-track latency) before calling the ASR default final.
 
 ## 7.5 — Pluggable advisor backends (RAG via Qdrant, LLM via OpenAI-compatible)
 
-Satisfies **R28–R31, R36**. Built on **V22–V36**.
+Satisfies **R28–R31, R36, R42**. Built on **V22–V36**, **V48**.
 
 The existing seam is already the right shape: `global_state.py` constructs an advisor and calls
 `analyze_dialogue(text) -> str | None`. Formalize that into a `Protocol` plus a factory; the
@@ -359,9 +407,12 @@ Required changes:
 5. **Surface liveness** (**R36, R42**, **V34**, **V35**). Two places:
    - *Pre-flight*: the RAG row shows chunk count and build date, so an unbuilt or empty index is
      caught before the meeting rather than during it.
-   - *Running*: show the most recent similarity score. `local_advisor.py:84` already computes and
-     logs it unconditionally, so this is close to free — and it is what makes `RAG 0.31` ("alive,
-     nothing matched") distinguishable from no score at all ("dead").
+   - *Running*: show the most recent similarity score when RAG is in play. `local_advisor.py:84`
+     already computes and logs it unconditionally, so this is close to free — and it is what makes
+     `RAG 0.31` ("alive, nothing matched") distinguishable from no score at all ("dead").
+   - *LLM-only*: there is no score. **R36** still applies — ship an explicit liveness signal
+     (last request latency / "waiting" / "error" / "returned empty") rather than a blank advisor
+     pane that looks like "nothing matched".
 
 Two migration traps in moving the index to Qdrant, both of which fail **silently**:
 
@@ -387,29 +438,15 @@ this plan and has never been measured. Two separate questions follow:
   `.env` with the other persisted settings rather than on the pre-flight panel — it is a property
   of the knowledge base and the domain, not of a single meeting.
 
-Resolve by measurement during 7.5, not before it.
+Resolve by measurement during this item, not before it.
 
-## 7.6 — Post-meeting cleanup script
+## 7.6 — Optional dual-track audio retention
 
-Satisfies **R9, R10, R12, R13, R14, R15**.
+Satisfies **R16, R44, R45, R46**; bounded by **R4**; warned about per **R41**; constrained by
+**V12, V48**. Claims on **R3** wait for open decision 1 — this item builds the archive path
+**R3** would need, but must not pretend default-off retention already satisfies it.
 
-A script under `tools/` that feeds an archived `history/Meeting_*.md` to headless Claude
-(`claude -p`) with a fixed prompt, writing a cleaned copy alongside it. Using full-document
-context, the prompt covers: normalizing to Traditional Chinese, re-flowing punctuation and
-segment boundaries broken by VAD flushes, splitting `Participant` into distinct speakers, and
-dropping residual Whisper hallucinations.
-
-- Write to a **new file**. The raw transcript is the record of what was actually heard.
-- **The application's offline guarantee is unaffected** (**R15**) — this is an operator tool run
-  deliberately outside the app, and no runtime code path reaches the network. It should still
-  carry a one-line notice that running it sends transcript content to Claude, since `history/`
-  holds meeting records.
-
-## 7.7 — Optional dual-track audio retention
-
-Satisfies **R3, R16, R44, R45, R46**; bounded by **R4**; warned about per **R41**.
-
-A **toggle on the pre-flight panel** (7.4, **R27**) that **persists its own state** — off until the
+A **toggle on the pre-flight panel** (**R27**) that **persists its own state** — off until the
 operator first enables it, then sticky on that machine (**R16**). Off initially on disk-space grounds
 and because recording carries consent expectations the system should not assume, which is why turning
 it on warns with a size estimate rather than silently starting to fill a disk (**R41**). Sticky rather
@@ -417,19 +454,20 @@ than per-meeting because a default of off means the one meeting that later turns
 one nobody armed; and because it is sticky, the panel shows its current state before every Start
 (**R46**) rather than only at the moment it was chosen.
 
-The toggle is unavailable until an archive directory is configured (**R44**); files land there, not
-under `history/`, though `history/` is already gitignored either way.
+**The toggle is always available once a storage root exists** (**R48**) — the archive path is
+derived, so retention cannot be "unconfigured". An optional `AUDIO_ARCHIVE_DIR` override relocates
+files; it does not gate the switch. (An earlier draft of this item contradicted that and is wrong.)
 
 Two things follow from **R45**, and both are cheap only if done now:
 
-- **The session record states whether audio was kept, and where.** 0001 already requires the precise
-  session start time in that header; retention status and archive path go beside it. Without them,
-  "recorded and later deleted" is indistinguishable from "never recorded" — and **R4** makes deletion
-  a normal event, not an anomaly.
-- **The transcript is a lossy interpretation, and the plan should stop implying otherwise.** With
-  retention off, whatever VAD and the no-speech filters discarded is gone. That is a real gap against
-  **R3** in the default configuration, and stating it is the honest alternative to quietly relying on
-  the operator to have known.
+- **The session record states whether audio was kept, and where.** Decision 0001 already requires the
+  precise session start time in that header; retention status and archive path go beside it. Without
+  them, "recorded and later deleted" is indistinguishable from "never recorded" — and **R4** makes
+  deletion a normal event, not an anomaly.
+- **The transcript is a lossy interpretation (**V48**), and the plan should stop implying otherwise.**
+  With retention off, whatever VAD and the no-speech filters discarded is gone. That is a real tension
+  with **R3** in the default configuration — recorded as an open decision below rather than papered
+  over by rewording **R3**.
 
 Because the choice is known before the streams open, the writer thread is configured once at
 Start rather than having to be attachable to a running capture.
@@ -438,8 +476,8 @@ Constraints, ordered by how easily each silently ruins the feature:
 
 - **Write from the raw stream, upstream of VAD.** `_processing_thread` discards whatever VAD
   calls non-speech, so archiving downstream would lose precisely the **VAD misjudgements** —
-  exactly the material worth going back to verify. **R3** only holds if the tap point is the
-  continuous callback stream.
+  exactly the material worth going back to verify. **R3** only holds for the archive if the tap
+  point is the continuous callback stream.
 - **Separate files per track; never mix** (**R2**). Mixing destroys the role attribution this
   architecture gets for free, and which comparable products only obtain because the OS forces
   the same split on them (**V16**).
@@ -470,9 +508,53 @@ corroboration (**R16**) must not be a derivative of what was heard. The 3x disk 
 Consequence, and it is not free: the capture stream must open at **48 kHz**, so resampling moves
 from the device into the software path. That makes **V12**'s fallback — run VAD at 48 kHz, resample
 only immediately before inference — the *mandatory* design rather than a contingency, and it
-couples this item to 7.2. `transcriber.py:46` currently hardcodes `sample_rate = 16000`, and
-`webrtcvad` accepts 48000, so the change is confined to stream setup plus one resample step before
-`inference_queue`.
+couples this item to the process-tap work. `transcriber.py:46` currently hardcodes
+`sample_rate = 16000`, and the plan asserts `webrtcvad` accepts 48000 — **confirm in the V12
+measurement**, do not discover it mid-hearing. The change is confined to stream setup plus one
+resample step before `inference_queue`.
+
+## 7.7 — Post-meeting cleanup script
+
+Satisfies **R9, R10, R12, R13, R14, R15**. Uses the retention filename contract when audio exists.
+
+A script under `tools/` that feeds an archived `history/Meeting_*.md` to headless Claude
+(`claude -p`) with a fixed prompt, writing a cleaned copy alongside it. Using full-document
+context, the prompt covers: normalizing to Traditional Chinese, re-flowing punctuation and
+segment boundaries broken by VAD flushes, splitting `Participant` into distinct speakers, and
+dropping residual Whisper hallucinations.
+
+- Write to a **new file**. The raw transcript is the record of what was actually heard.
+- **The application's offline guarantee is unaffected** (**R15**) — this is an operator tool run
+  deliberately outside the app, and no runtime code path reaches the network. It should still
+  carry a one-line notice that running it sends transcript content to Claude, since `history/`
+  holds meeting records.
+- **If retained audio is present**, resolve
+  `Meeting_<session_id>_{mic,system}.wav` via `session_id` + archive directory (**R44**, **R45**)
+  and tell the operator the paths — the script may still be text-only for v1, but it must not
+  invent a sibling-file layout the retention item does not use. This is why cleanup ships *after*
+  retention's naming contract, not before.
+
+---
+
+## 🔓 Open decisions
+
+Resolve before the cited work is implemented. These are blockers, not polish.
+
+1. **How does R3 coexist with default-off retention?** **R3** says completeness of capture is the
+   system's job; **R16** leaves archival off until the operator arms it; **V48** shows the live
+   transcript path already discards material. Either the stance means "do not drop frames on the
+   live dual-track path" (and archival completeness is opt-in under **R4**/**R16**), or default-off
+   retention is the wrong default. **Do not quietly rewrite R3 to match the plan** — pick one and
+   record it. Blocks closing the retention item as "satisfies R3".
+2. **LLM-only liveness under R36.** When RAG is off there is no cosine score (**V35** does not
+   apply). What signal distinguishes "LLM returned nothing on purpose", "call in flight", and
+   "backend dead"? Blocks the advisor-backend item's LLM-only configuration.
+3. **Advisor band edge `0.45`.** No measurement backs it (see advisor-backend item). Leave as a
+   constant until measured, or measure before exposing. Wrong value floods the speaker or silently
+   disables the LLM band.
+4. **Qwen3-ASR supply chain (**V44**).** Community MLX reimplementation, single maintainer, product
+   premise is offline forever. Accept the risk, vendor-pin a commit hash + wheel mirror, or
+   disqualify on supply-chain grounds even if it wins the bake-off numbers.
 
 ---
 
@@ -480,13 +562,14 @@ couples this item to 7.2. `transcriber.py:46` currently hardcodes `sample_rate =
 
 - **The RAG advisor fails silently when the index is missing or stale** — see **V34**. The toggle
   reads as armed and nothing will ever fire, with no signal in the UI. This is the failure this
-  product can least afford: it is discovered at the moment the defence was needed. Fixed by 7.5's
-  liveness work (**R36**).
-- **`HF_HOME` in `.env` has never taken effect** — see **V19**. Fixed by 7.4. Confirm afterwards
-  by checking where weights actually land on a fresh run.
-- **Capture starts before authentication** — see **V18**. Fixed by 7.4.
-- **`is_local` fails open** — see **V37**. Harmless while it only skips a PIN prompt; not harmless
-  once it gates credentials. Fixed by 7.4, which must also make the failure visible.
+  product can least afford: it is discovered at the moment the defence was needed. Fixed by the
+  advisor-backend item's liveness work (**R36**).
+- **`HF_HOME` in `.env` has never taken effect** — see **V19**. Fixed by the configuration item.
+  Confirm afterwards by checking where weights actually land on a fresh run.
+- **Capture starts before authentication** — see **V18**. Fixed by the configuration item.
+- **`is_local` fails open** — see **V37** (empty host *and* bare `except`). Harmless while it only
+  skips a PIN prompt; not harmless once it gates credentials. Fixed by the configuration item,
+  which must also make the failure visible (**R39**).
 - **Speaker-audio echo causes double transcription and false RAG triggers.** If the operator uses
   loudspeakers rather than headphones, the microphone also picks up the far end, so the same
   utterance is transcribed twice — once as `Speaker (You)`, once as `Participant`. Since
@@ -498,10 +581,19 @@ couples this item to 7.2. `transcriber.py:46` currently hardcodes `sample_rate =
   sounds follow from **R1**. The defences are `webrtcvad` (severity 3), Whisper's
   `no_speech_threshold`, and the anti-hallucination blacklist in `transcriber.py`. VAD is
   unreliable on *music*, which can be misclassified as speech and then hallucinated into text.
-- **`MULTILINGUAL_MODE` is misleadingly named** — see **V2, V3**. Deleted by 7.1.
+  **V48** is the precise discard list; **R37** ranks stopping false lines above raw WER.
+- **`MULTILINGUAL_MODE` is misleadingly named** — see **V2, V3**. Deleted by the ASR bake-off.
 - `global_state.py` looks for `["MacBook Air Microphone", "Built-in Microphone"]`. On a MacBook
   Pro neither matches, so microphone selection silently relies on `fallback_to_default`. The
-  result is usually correct, but the keyword list is not doing its job. Superseded by 7.3.
+  result is usually correct, but the keyword list is not doing its job. Superseded by the
+  microphone-selection item.
 - Capturing the far end currently requires the BlackHole driver *plus* a manually configured
   Multi-Output Device, or the operator cannot hear the meeting while it is captured. Superseded
-  by 7.2.
+  by the process-tap item.
+- **`V12` is still unverified and is now on the critical path** for both the process tap and
+  retention. Building either against an assumed resample behaviour is how hearings lose audio.
+- **`V45` folder chooser untested.** Configure cannot promise a native picker until a Streamlit
+  callback has actually raised one without deadlocking the rerun.
+- **`.env.example` is pre-Phase-7** — still documents `MULTILINGUAL_MODE` and project-local
+  `HF_HOME=./.hf_cache`, which contradicts **R48** and **V19**. Regenerated with the configuration
+  item; until then the template teaches the broken layout.
