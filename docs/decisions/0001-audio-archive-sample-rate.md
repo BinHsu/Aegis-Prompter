@@ -1,44 +1,79 @@
-# 0001 — Retained audio is archived at 48 kHz
+# 0001 — Retained audio is archived at 16 kHz
 
-- **Status:** accepted
-- **Decided:** 2026-08-07 · **Recorded:** 2026-08-10
-- **Follows from:** R3, R16, V7, V12
+- **Status:** accepted · **reversed 2026-08-11**, having been accepted at 48 kHz on 2026-08-07
+- **Follows from:** R3, R16, R45, V7, V12, V51, V56, V58
 
 ## Context
 
 Dual-track audio may optionally be retained, for post-processing and for **corroboration** —
-settling disputes about what was actually said (**R16**) — under a stance that makes completeness of
-capture the system's own responsibility (**R3**).
+settling disputes about what was actually said (**R16**). **R3** was worded, when this record was
+written, as making completeness of capture the system's own responsibility; it was rewritten on
+2026-08-12 to promise only that the system does not discard on its own initiative. That does not
+disturb this decision — the rate question is about what a retained file contains, not about whether
+one exists — but it removes the obligation the original framing implied.
 
-The capture path opens its streams at 16 kHz today, because that is what `mlx_whisper` consumes and
-what `webrtcvad` needs at the 30 ms block size in use. The Core Audio process tap, measured in
-**V7**, produces 48 kHz mono float32. So there were two candidate archive rates: 16 kHz, matching
-what the inference path actually processed, or 48 kHz, matching what the hardware produced.
-
-The plan originally suggested 16 kHz, reasoning that the record would then match the transcript.
+The Core Audio process tap produces **48 kHz** mono float32 (**V7**), while every ASR model this
+product can run consumes **16 kHz** — verified 2026-08-11: `mlx_whisper.audio.SAMPLE_RATE` is
+16000, and `transcriber.py` has always opened its streams at that rate. So there are two candidate
+archive rates: 16 kHz, matching what the inference path processes, or 48 kHz, matching what the
+hardware produces.
 
 ## Decision
 
-**Archive at 48 kHz.**
+**Archive at 16 kHz.** One resample at capture, and everything downstream — inference, archive,
+re-transcription — shares the same rate.
 
-16 kHz is merely what the inference path happens to consume. 48 kHz is the rate the hardware
-produces. Archiving at 16 kHz would store a resampled *derivative* of the record — and an archive
-whose entire purpose is corroboration must not be a derivative of the thing it corroborates.
+Three measurements made on 2026-08-11 decided it, none of which existed when this record first
+chose 48 kHz:
 
-The disk cost is accepted: 691 MB per hour for both tracks and roughly 2.1 GB for a three-hour
-hearing, against 230 MB and ~690 MB at 16 kHz.
+- **Sample rate buys the model nothing.** Whisper pads every input to a fixed 30-second window, so
+  cost is set by the window and not by the input: 1 s and 10 s of audio measured 597 ms and 607 ms
+  (**V51**), and peak memory does not move either (**V58**). A higher archive rate cannot improve
+  transcription because the transcriber never sees it.
+- **Two rates means two paths, and the second one was missing.** With a 48 kHz archive, capture
+  feeds the archive at 48 kHz and a *separate* step must downsample for inference. That step was
+  never built, and **V56** measured what its absence costs: inference at 48 kHz took **3426 ms
+  against 660 ms**, because the model reads the samples as though the audio were three times
+  longer, and VAD segmentation shifted too (30 segments to 24). One rate throughout removes the
+  path that produced that failure rather than adding the step it needed.
+- **Disk: 690 MB against 2.1 GB** for a three-hour hearing across both tracks.
+
+## What this gives up, deliberately
+
+**R45** asks that an archived meeting can be re-transcribed later with a better model. At 16 kHz
+that holds for any ASR in sight — they all consume 16 kHz — but it does **not** hold for uses that
+want the acoustic detail rather than the words: acoustic speaker attribution as the fallback if
+text-only attribution proves inadequate (**R12**), or any forensic question about the recording
+itself. Those are foreclosed by this decision and cannot be recovered afterwards.
+
+That is the trade being made: **the archive is now a faithful record of what the transcriber heard,
+not of what the microphone captured.** The earlier decision put it the other way round.
+
+## Why it was 48 kHz until 2026-08-11 — kept so this is not relitigated a third time
+
+The original reasoning, recorded here because it was not foolish and someone will reach for it
+again: an archive kept for corroboration should not be a *resampled derivative* of the record.
+48 kHz is what the hardware produces (**V7**); 16 kHz is merely what the inference path happens to
+consume. On that view, storing 16 kHz means the only surviving copy of a hearing has already been
+degraded by a processing decision, and the 3x disk cost was accepted for it.
+
+What changed is not the principle but its price. Three separate things had been assumed and were
+then measured: that a higher rate might help transcription (it cannot), that keeping both rates was
+free (it costs an extra path, and that path was the one broken), and that the evidentiary value
+justified the cost (it does, but only for non-ASR uses, which are not in this product's scope).
+
+**If you are considering reversing this again**, the question to answer first is whether acoustic
+analysis of the recording — not the transcript — has become a real requirement. If it has, this
+decision should change. If it has not, nothing in the ASR path will ever ask for 48 kHz.
 
 ## Consequences
 
-- The capture stream must open at **48 kHz**, which moves resampling out of the audio device and
-  into the software path. **V12**'s fallback — run VAD at 48 kHz and resample only immediately
-  before inference — becomes the *mandatory* design rather than a contingency.
-- Audio retention is therefore coupled to the process-tap work. It can no longer be built as an
-  isolated writer thread bolted onto an existing 16 kHz stream.
-- `transcriber.py` hardcodes `sample_rate = 16000`, and `webrtcvad` accepts 48000, so the code
-  change is confined to stream setup plus one resample step ahead of `inference_queue`.
-- **V12 is still unverified.** Whether PortAudio resamples on its own was never tested, and this
-  decision makes that measurement load-bearing rather than incidental.
-- The archive stops matching the transcript sample-for-sample. Mapping a transcript timestamp to an
-  offset in the WAV now requires the session start time to be recorded precisely — which **R16**'s
-  corroboration use already depended on.
+- The capture stream resamples **once**, at the device boundary, and `transcriber.py`'s
+  `sample_rate = 16000` becomes the single rate in the pipeline rather than one of two.
+- **V12** stays open and becomes *more* load-bearing, not less: whether PortAudio resamples a
+  48 kHz-only source down to 16 kHz on request, or whether that has to be done in software, is now
+  the only rate conversion in the system. It still needs measuring on hardware.
+- The retention item's sizing table uses the 16 kHz row: **115 MB per hour per track**, ~690 MB for
+  a three-hour hearing across both.
+- `webrtcvad` accepting 48 kHz (measured 2026-08-11) is no longer needed for the archive path. It
+  remains relevant only if a future VAD choice wants to run before the resample.
