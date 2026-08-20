@@ -50,6 +50,7 @@ Run:
 import argparse
 import csv
 import json
+import statistics
 import os
 import subprocess
 import sys
@@ -199,11 +200,28 @@ def main():
         value = cer(ref, hyp)
         if value is not None:
             buckets.append(round(value, 4))
-    bucketed = round(sum(buckets) / len(buckets), 4) if buckets else None
+    # **Median, not mean, and the mean is kept beside it rather than deleted (V96).** CER is edits
+    # divided by reference characters, so a bucket whose reference is short and whose hypothesis is
+    # long is UNBOUNDED -- on 2026-08-19 one bucket of a 44-bucket hour scored 16.59 and decided the
+    # mean by itself, giving 0.8388 where the median was 0.4096 and every shorter rung agreed with
+    # the median. The error therefore grew with the number of buckets, which is to say with the
+    # length of the run that bucketing was introduced to make safe (V87 replaced a whole-run CER for
+    # being "dominated by one early insertion"; its replacement was dominated by one bad bucket).
+    # Both statistics are written so a reader can see the disagreement instead of inheriting one
+    # number, and `cer_buckets` keeps the distribution that made this visible at all.
+    bucketed_mean = round(sum(buckets) / len(buckets), 4) if buckets else None
+    bucketed = round(statistics.median(buckets), 4) if buckets else None
+    clipped = round(sum(min(v, 1.0) for v in buckets) / len(buckets), 4) if buckets else None
+    over_one = [v for v in buckets if v > 1.0]
 
     print(f"\nlines the microphone produced: {len(buffer.lines)}")
-    print(f"CER, mean of 60s buckets (the figure to quote): "
+    print(f"CER, MEDIAN of 60s buckets (the figure to quote): "
           f"{bucketed}  from {len(buckets)} buckets")
+    print(f"CER, mean of the same buckets (unbounded, do not quote alone): {bucketed_mean}"
+          f"   clipped mean: {clipped}")
+    if over_one:
+        print(f"  ⚠️ {len(over_one)} bucket(s) scored above 1.0 -- {[round(v, 2) for v in over_one]}"
+              f" -- insertions exceeded the reference, which is what breaks the mean.")
     print(f"CER, whole run as one string (kept for comparison, degrades with length): "
           f"{score if score is None else round(score, 4)}")
     print("A LOW number here is the bad outcome: it means the far party's words are landing in "
@@ -219,7 +237,13 @@ def main():
                    # collected and then thrown away.
                    "lines": [{"at": round(offset - started, 2), "role": role, "text": text}
                              for offset, role, text in buffer.lines],
+                   # `cer_bucketed_60s` is now the MEDIAN (V96). Anything that read this field
+                   # before 2026-08-20 read an unbounded mean; the mean is still written under its
+                   # own name so an old number can be reproduced rather than merely contradicted.
                    "cer_bucketed_60s": bucketed,
+                   "cer_bucketed_60s_mean": bucketed_mean,
+                   "cer_bucketed_60s_clipped_mean": clipped,
+                   "cer_buckets_over_one": over_one,
                    "cer_buckets": buckets,
                    "cer_whole_run": score,
                    "reference_chars": len(reference), "played_seconds": played},

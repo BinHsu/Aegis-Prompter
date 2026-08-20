@@ -1092,16 +1092,16 @@ Does letting speech segments grow beat flushing them at 0.4 s of silence?
 - `reference_buckets()` (L151)
 - `main()` (L165)
 
-### `tools/measure_speaker_leakage.py` — 232 lines
+### `tools/measure_speaker_leakage.py` — 256 lines
 
 On speakers, how much of the far party lands in the Operator track — with ground truth this time.
 
-- `class CollectingBuffer` (L67)
+- `class CollectingBuffer` (L68)
   - `add_entry()`
-- `bucket_reference()` (L84)
-- `reference_text()` (L94)
-- `set_volume()` (L104)
-- `main()` (L121)
+- `bucket_reference()` (L85)
+- `reference_text()` (L95)
+- `set_volume()` (L105)
+- `main()` (L122)
 
 ### `tools/measure_tap_stream.py` — 134 lines
 
@@ -1168,11 +1168,11 @@ Does a retrieval cue fire when it should, and stay quiet when it should not?
 - `build_temp_index()` (L83)
 - `main()` (L105)
 
-### `tools/probe_ui_flow.py` — 184 lines
+### `tools/probe_ui_flow.py` — 226 lines
 
-Drive the real application through Start, a fed transcript, and Stop. **KNOWN BROKEN.**
+Drive the real application through Start, a fed transcript, and Stop.
 
-- `main()` (L67)
+- `main()` (L69)
 
 ### `tools/score_real_fixtures.py` — 207 lines
 

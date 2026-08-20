@@ -2702,6 +2702,30 @@ Verified with Command Line Tools `clang` only — **no Xcode required**.
   that had written only the mean would have reported 0.8388 as the hour's leak and nothing would
   have contradicted it.
 
+  ✅ **Fixed and rescored 2026-08-20.** `measure_speaker_leakage.py` now writes the **median** as
+  `cer_bucketed_60s`, keeps the mean under `cer_bucketed_60s_mean`, adds a clipped mean, and lists
+  any bucket above 1.0 — so a reader sees the disagreement instead of inheriting one number. Every
+  stored run was rescored from the `cer_buckets` lists that made this visible:
+
+  | Run | Buckets | **Median** | Mean | Clipped | Over 1.0 |
+  |---|---|---|---|---|---|
+  | 08-18 bucketed, 3 min | 3 | 0.4095 | 0.3871 | 0.3871 | 0 |
+  | 08-18 bucketed, 10 min | 10 | 0.4082 | 0.3892 | 0.3892 | 0 |
+  | 08-19 2121, 3 min *(false start)* | 3 | 0.3276 | 0.3097 | 0.3097 | 0 |
+  | 08-19 2121, 10 min *(false start)* | 10 | **0.5582** | **0.9467** | 0.5723 | **2** |
+  | 08-19 2230, 3 min | 3 | 0.3202 | 0.4055 | 0.4055 | 0 |
+  | 08-19 2230, 10 min | 10 | 0.3780 | 0.3874 | 0.3874 | 0 |
+  | **08-19 2230, 60 min** | 44 | **0.4096** | **0.8388** | 0.4529 | **3** |
+
+  **The median is stable where the mean is not: spread 0.2380 against 0.6370, a factor of 2.7.**
+  That is the quantitative form of the finding — not that one hour was misreported, but that the
+  mean's error scales with bucket count while the median's does not.
+
+  ⚠️ **One earlier statement of mine needs narrowing.** The false start's 3- and 10-minute rungs were
+  called "valid results" when its 60-minute rung was voided. The 10-minute rung carries **two**
+  buckets above 1.0 and a mean of **0.9467**, so *its mean* was never usable either. Its median,
+  0.5582, is — and it is the highest median in the set.
+
 - **V97 — The gate has now run live for an hour, and it costs nothing measurable while more than
   halving the worst queue dwell.** Measured 2026-08-19/20, 60-minute acoustic soak, microphone and
   tap both live, **gate verified live before the run started and zero `[VoiceGate] unavailable`

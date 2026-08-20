@@ -1,26 +1,28 @@
 #!/usr/bin/env python3
-"""Drive the real application through Start, a fed transcript, and Stop. **KNOWN BROKEN.**
+"""Drive the real application through Start, a fed transcript, and Stop.
 
-🚨 **This does not work yet, and it is committed anyway so the gap is visible rather than lost.**
-Run 2026-08-20: it reaches the pre-flight and clicks Start without raising, survives fifteen poll
-re-runs, and then fails three checks -- no transcript line reaches the buffer, no Stop control
-appears, and no session record is written. The engine log shows both streams opening and closing
-**about half a second later**, so the session does not survive the poll re-runs; that is the thing
-to diagnose first.
+**Passes as of 2026-08-20, and this file previously carried a KNOWN BROKEN banner.** All twelve
+checks pass: the boot reaches `READY` through `downloading -> warming`, the running view survives
+nineteen poll re-runs, six lines reach the buffer, Stop appears and fires, and a session record is
+written to a temporary history with nothing touching the operator's own.
 
-🚨 **The claim two paragraphs below that this "opens no microphone" is FALSE as written.** The same
-run logged `[Speaker (You)] Input stream live on [0] 'MacBook Pro Microphone'`, so `AEGIS_V52_FEED`
-was not honoured and a real device opened. Either the variable is read before this sets it, or
-`start_recording` is reached by a path that ignores it. Until that is understood, **this probe is
-not silent and not safe to run at an arbitrary hour**.
+**The two defects it had were both in the harness, and both are worth keeping written down.**
 
-⚠️ **It also changes the operator configuration as a side effect.** `app.py` persists
-`ARCHIVE_AUDIO` and `MIC_DEVICE` at Start, so clicking Start through this harness armed retention
-in the real `.env` and left two WAV files under the archive directory. That was reverted by hand.
-A future version must redirect those the way it already redirects the history directory.
-
-Fix it or delete it. A probe in `tools/` that reports failures of its own making teaches the next
-reader nothing, and one that misdescribes itself is worse than one that is merely broken.
+- **A race with the application's own boot thread.** `begin_capture` does the download check, the
+  warm-up and `start_recording` on a background daemon thread, so the click returns long before
+  capture exists. The first version polled for a fixed thirty seconds and then tore down -- and its
+  teardown both popped `AEGIS_V52_FEED` and called `stop_recording`. The boot thread reached
+  `start_recording` *after* that, read the feed variable as empty, **opened the real microphone**,
+  and was stopped 140 ms later. One race produced three failing checks and a docstring claim that
+  this probe opens no microphone, which was false for exactly that reason. It now waits on
+  `bootstrap.get_readiness()` and prints each transition, so a slow boot is visible rather than
+  mistaken for a broken one.
+- **A check that could not pass.** The transcript assertion read
+  `getattr(state.buffer, "history", [])`, and `DialogueBuffer` has no `history` attribute -- so the
+  default `[]` was returned on every input and the check would have reported `0 lines` against a
+  perfectly working application forever. The store is `buffer.dialogue`, reached by
+  `get_full_dialogue()`. **This is the defect class this probe exists to look for, introduced inside
+  the probe itself**, and it is the seventh instance in this work.
 
 **The gap this is meant to close, and still the reason to fix rather than delete it.** Every soak in
 this repository calls `GlobalState` directly. Nothing has ever driven
@@ -69,6 +71,11 @@ def main():
     parser.add_argument("--seconds", type=float, default=40.0,
                         help="How long to let the fed session run before pressing Stop.")
     parser.add_argument("--feed", default=str(FIXTURE))
+    parser.add_argument("--boot-timeout", type=float, default=420.0,
+                        help="How long to allow the background boot thread to reach READY. The "
+                             "download check plus warm-up is minutes, not seconds; the first "
+                             "version of this probe allowed thirty seconds total and tore down "
+                             "mid-boot.")
     args = parser.parse_args()
 
     if not os.path.exists(args.feed):
@@ -123,29 +130,64 @@ def main():
         if start[0].disabled:
             return 1
 
-        print(f"\n  pressing Start, then feeding {os.path.basename(args.feed)} "
-              f"for {args.seconds:g}s...")
+        print(f"\n  pressing Start, then feeding {os.path.basename(args.feed)}...")
         start[0].click().run()
         check("Start did not raise", not at.exception,
               "; ".join(str(e.value)[:120] for e in at.exception) if at.exception else "")
 
-        # Let the engine actually transcribe. Poll the way the running view does, so the fragment
-        # is re-executed rather than merely constructed once.
+        # **Wait for the application's own readiness before asserting anything, and this is the
+        # whole fix.** `begin_capture` does the download check, the warm-up and `start_recording`
+        # on a background daemon thread, so the click returns long before capture exists. The
+        # first version of this probe polled for a fixed thirty seconds and then tore down -- and
+        # its teardown both popped `AEGIS_V52_FEED` and called `stop_recording`. The boot thread
+        # then reached `start_recording` afterwards, read the feed variable as empty, opened the
+        # real microphone, and was stopped 140 ms later. One race produced all three original
+        # failures and the false "opens no microphone" claim.
+        deadline = time.time() + args.boot_timeout
+        seen = []
+        while time.time() < deadline:
+            state = bootstrap.get_readiness()
+            label = state.get("state")
+            if label not in seen:
+                seen.append(label)
+                print(f"    readiness -> {label}"
+                      + (f"  ({state.get('detail')})" if state.get("detail") else ""))
+            if label in (bootstrap.READY, bootstrap.FAILED):
+                break
+            at.run()
+            time.sleep(2)
+        final = bootstrap.get_readiness()
+        check("the boot reached READY", final.get("state") == bootstrap.READY,
+              f"ended at {final.get('state')!r}: {final.get('detail')!r}")
+        if final.get("state") != bootstrap.READY:
+            return 1
+
+        # Only now is there a session to watch. Poll the way the running view does, so the
+        # fragment is re-executed rather than merely constructed once.
         deadline = time.time() + args.seconds
         ticks = 0
         while time.time() < deadline:
             at.run()
             ticks += 1
             time.sleep(2)
-        print(f"  {ticks} poll ticks completed without an exception"
-              if not at.exception else f"  exception during polling")
+        print(f"  {ticks} poll ticks after READY"
+              + ("" if not at.exception else "  (with an exception)"))
         check("the running view survives repeated polling", not at.exception)
 
         from global_state import GlobalState
 
         state = GlobalState()
-        lines = list(getattr(state.buffer, "history", []) or [])
+        # `get_full_dialogue()`, not `getattr(buffer, "history", [])`. The first version read an
+        # attribute that does not exist, so the default `[]` was returned every time and the check
+        # could not pass on any input -- the same defect class this probe was written to look for,
+        # and the seventh instance of it in this work. The real store is `buffer.dialogue`.
+        lines = list(state.buffer.get_full_dialogue() or [])
         check("transcript lines reached the buffer", len(lines) > 0, f"{len(lines)} lines")
+        if lines:
+            roles = {}
+            for entry in lines:
+                roles[entry.get("role", "?")] = roles.get(entry.get("role", "?"), 0) + 1
+            print(f"      roles: {roles}")
 
         stop = [b for b in at.button if "Stop capture" in b.label]
         check("a Stop control is present while running", bool(stop))
