@@ -13,7 +13,7 @@ rather than trusting this file:
 python tools/gen_filemap.py
 ```
 
-**75 Python files.**
+**76 Python files.**
 
 ## `fixtures/asr/results/20260817-model-swap/`
 
@@ -933,13 +933,13 @@ Build a two-track conversation fixture with an exact reference timeline.
 - `build()` (L90)
 - `main()` (L210)
 
-### `tools/check_state.py` — 130 lines
+### `tools/check_state.py` — 136 lines
 
 Checks that the requirement documents still hold together.
 
-- `read()` (L35)
-- `decision_records()` (L40)
-- `main()` (L49)
+- `read()` (L41)
+- `decision_records()` (L46)
+- `main()` (L55)
 
 ### `tools/derive_hallucination_list.py` — 119 lines
 
@@ -1175,6 +1175,13 @@ Drive the real application through Start, a fed transcript, and Stop.
 
 - `main()` (L69)
 
+### `tools/rescore_leakage_micro.py` — 115 lines
+
+Rescore every stored speaker-leak run with a micro-average, from disk. No measurement.
+
+- `micro_average()` (L36)
+- `main()` (L67)
+
 ### `tools/score_real_fixtures.py` — 207 lines
 
 Score ASR candidates against real recorded speech with published ground truth.
@@ -1185,7 +1192,7 @@ Score ASR candidates against real recorded speech with published ground truth.
 - `score()` (L71)
 - `main()` (L106)
 
-### `tools/soak_capture.py` — 483 lines
+### `tools/soak_capture.py` — 527 lines
 
 Run capture for an hour through the real device path, and report whether it degrades.
 

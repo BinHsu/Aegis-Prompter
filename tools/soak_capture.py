@@ -381,6 +381,50 @@ def main():
             print(f"  distinct files: {a['path'] != b['path']}")
             print(f"  first 5s differ: {a['head'] != b['head']}   "
                   f"(identical heads would mean one stream was written to both -- R2)")
+
+            # **What an hour adds over three minutes, and the reason V98 did not answer it.** Three
+            # minutes shows two files appear; it says nothing about whether continuous writing
+            # drifts against wall clock, drops blocks when the writer falls behind, or leaves a file
+            # whose header is fine and whose frames are not. Each of those needs the long run.
+            for track, info in seen.items():
+                drift = info["seconds"] - expected
+                pct = (100 * drift / expected) if expected else 0.0
+                print(f"  {track:<7} drift {drift:+.2f}s over {expected/60:.0f} min "
+                      f"({pct:+.3f}%)")
+            # Read the count the engine logs, not an accessor invented for this print. The first
+            # draft called `state.archive_dropped()`, which does not exist -- guarded by `hasattr`
+            # it would have printed "n/a" on every run and never once reported a dropped block.
+            # `(\S+)` here missed `Speaker (You)` -- the label contains a space -- so the first
+            # version of this print reported ONE of two tracks and looked complete. Ninth instance
+            # in this work of a pattern that cannot match what it is looking for. `(.+?)` is lazy up
+            # to the colon, which both labels satisfy.
+            dropped = re.findall(r"\[Archive\] (.+?): [\d.]+ s at \S+ \((\d+) dropped\)",
+                                 open(log_path, encoding="utf-8", errors="replace").read()
+                                 if log_path else "")
+            if len(dropped) < 2:
+                print(f"  ⚠️ dropped-block lines found for {len(dropped)} of 2 tracks -- a missing"
+                      f" track is NOT a zero")
+            if dropped:
+                for label, count in dropped:
+                    flag = "" if count == "0" else "   <-- the writer fell behind"
+                    print(f"  {label:<7} dropped blocks: {count}{flag}")
+            else:
+                print("  dropped-block count NOT FOUND in the engine log -- do not read that as zero")
+            # Read every frame, not just the header. A truncated or fragmented file opens fine and
+            # fails partway, which is the failure a header check cannot see.
+            for track, info in seen.items():
+                try:
+                    with wave.open(info["path"], "rb") as whole:
+                        n = whole.getnframes()
+                        read = len(whole.readframes(n)) // max(whole.getsampwidth() *
+                                                               whole.getnchannels(), 1)
+                    ok = read == n
+                    print(f"  {track:<7} readable end to end: {ok}  ({read} of {n} frames)")
+                except Exception as exc:
+                    print(f"  {track:<7} UNREADABLE: {type(exc).__name__}: {exc}")
+            print(f"  bytes on disk: mic {a['bytes']:,}  system {b['bytes']:,}  "
+                  f"total {(a['bytes'] + b['bytes']) / 1048576:.1f} MB for "
+                  f"{expected/60:.0f} min")
         else:
             print("  ONE OR BOTH TRACKS ABSENT -- retention did not deliver two files")
 

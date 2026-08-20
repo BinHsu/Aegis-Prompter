@@ -2965,6 +2965,67 @@ Verified with Command Line Tools `clang` only — **no Xcode required**.
   only per-bucket ratios, so this needs per-bucket edit counts and reference lengths first. Until
   that exists, quote a range and not a figure.
 
+  ❌ **The micro-average this entry proposed is refuted, and the reasoning behind it was wrong.**
+  Computed 2026-08-20 over the ten runs that stored timestamps, with `tools/rescore_leakage_micro.py`:
+
+  | Statistic | Range across runs | Spread | Bounded per bucket? |
+  |---|---|---|---|
+  | **Clipped mean** | 0.310 – 0.690 | **0.380** | yes |
+  | **Median** | 0.320 – 0.704 | **0.384** | yes |
+  | Micro-average | 0.313 – **2.284** | 1.971 | **no** |
+  | Mean | 0.310 – **2.406** | 2.097 | **no** |
+
+  **Why the reasoning failed.** This entry assumed the pathology was *short* references, so weighting
+  each bucket by its reference length would tame it. The worst buckets include **6.15 on 232
+  characters** — a *large* reference whose hypothesis ran seven times longer. **Edit distance scales
+  with the hypothesis, not the reference**, so weighting by reference characters hands a bad bucket
+  *more* weight precisely when it has plenty of reference text to be wrong about.
+
+  ✅ **What works is boundedness, not weighting.** The median and clipped mean agree to within 0.004
+  and are about **five times** more reproducible than either unbounded form. `cer_bucketed_60s` is
+  already the median (**V96**), so **no further change to the metric is warranted** — the improvement
+  this entry asked for does not exist, and looking for it is now a closed question rather than an open
+  task.
+
+  ⚠️ **Three of the thirteen stored runs cannot be rescored at all.** The 2026-08-18 runs wrote
+  `lines` as bare strings before offsets were stored, so they cannot be bucketed retroactively — the
+  tool's own JSON writer notes that "the data to fix the metric had been collected and then thrown
+  away". They are reported as skipped rather than averaged over fewer buckets, because a table that
+  quietly drops rows is how a shrinking sample becomes invisible.
+
+- **V110 — Retention survives a full hour: 0.03% drift, zero dropped blocks, both files readable end
+  to end, 220 MB.** Measured 2026-08-20, `soak_capture.py --minutes 60 --microphone --gate --retain`,
+  which is the arrangement a real meeting uses. **V98** proved two files appear at three minutes and
+  said explicitly that an hour of continuous writing was unmeasured; this is that hour.
+
+  | | `mic` | `system` |
+  |---|---|---|
+  | Duration | 3601.1 s | 3601.1 s |
+  | **Drift against the soak** | **+1.05 s (+0.029%)** | **+1.08 s (+0.030%)** |
+  | **Dropped blocks** | **0** | **0** |
+  | **Readable end to end** | **57,616,800 of 57,616,800 frames** | **57,617,280 of 57,617,280** |
+  | Bytes | 115,233,644 | 115,234,604 |
+
+  **All four things V98 left open are answered.** Continuous writing does not drift meaningfully —
+  one second in an hour, a third of a tenth of a percent. The writer never fell behind, so nothing was
+  dropped. **Every frame reads back**, not merely the header, which is the check a truncated or
+  fragmented file passes and a full read does not. And **219.8 MB per hour for two tracks** at 16 kHz
+  mono 16-bit is a rate a disk-space warning can be built from if one is ever wanted.
+
+  **R2 holds on disk over the hour as well:** two distinct paths, and their first five seconds differ,
+  which is the assertion that separates two tracks from one stream written twice.
+
+  **Engine health alongside it:** peak MLX 2084.2 → 2091.7 MB over the hour, zero inference-thread
+  exceptions, gate verified live before the run. Retention therefore costs +7.5 MB against **V97**'s
+  +4.1 MB for the same hour ungated — a difference of about 3 MB, which is the archive's own buffers.
+
+  ⚠️ **The dropped-block figure was nearly reported for one track only.** The check read the label
+  with `(\S+)`, and `Speaker (You)` contains a space, so it matched `Participant` alone and printed a
+  result that looked complete. Both tracks did log `0 dropped`, confirmed against the engine log
+  directly. Fixed, verified in both directions, and a warning now fires when fewer than two tracks
+  report — **a missing track is not a zero**. Ninth instance in this work of a pattern that cannot
+  match what it is looking for.
+
 - **V101 — Gated, the segmentation table can choose again, and it chooses what V66 already chose.**
   Measured 2026-08-20, `tools/measure_segmentation.py` run twice on the same fixture in the same
   session, one variable changed: `--gate`.

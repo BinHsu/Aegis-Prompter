@@ -447,50 +447,68 @@ advisor has produced tokens, and retention has written files. It was stale for a
 sent a cold reader looking for work that was already done. Assume this section decays the same way
 and check the dates on the `V*` entries it cites.
 
-#### A. Experiments that need no person, in priority order
+#### A. Experiments that need no person — rewritten 2026-08-20 22:00, four of five closed
 
-1. **`tools/probe_ui_flow.py` is committed and does not work.** It drives the real `app.py` through
-   `AppTest` to Start → fed transcript → Stop, and three of its checks fail: no transcript lines
-   reach the buffer, no Stop control appears, and no session record is written. Observed 2026-08-20:
-   the streams open and close about half a second later, so **the session does not stay up across
-   the poll re-runs**. Its docstring also claims it "opens no microphone" and **that is false** —
-   the log shows `Input stream live on [0] 'MacBook Pro Microphone'`, so `AEGIS_V52_FEED` was not
-   honoured. Fix the tool or delete it; a broken probe in `tools/` is worse than none, because the
-   next reader assumes it works. **This is the only path in the product that no test or soak
-   covers**: everything else drives `GlobalState` directly and bypasses Streamlit entirely.
-2. ✅ **Done 2026-08-20: `cer_bucketed_60s` is now the median** (**V96**), the mean is kept under its
-   own name, and every stored run was rescored. **But the next step is already visible and is
-   better than what landed.** The 3-minute rung of the 19:32 run produced a bucket scoring **6.15**,
-   giving a mean of 2.4065 against a median of 0.7045 — at *three* minutes, not sixty. So the
-   mechanism is **not** "error grows with bucket count", which is only the probability of hitting a
-   bad bucket; it is **buckets whose reference text is short**, where a near-silent minute gives a
-   tiny denominator and any microphone output becomes an enormous insertion ratio.
+**All five of the original items are resolved.** The list below is what is genuinely left, and it is
+short. Anything struck through was on this list and is done; the `V*` entry carries the result.
 
-   **The principled statistic is a micro-average: total edits divided by total reference characters
-   across buckets.** It avoids the single-string alignment problem **V87** rejected *and* the
-   small-denominator explosion the bucketed mean introduced. It needs the tool to record per-bucket
-   edit counts and reference lengths rather than only the ratio, which it does not yet do. Do this
-   before quoting any leakage figure to two decimal places.
+1. ~~Fix or delete `tools/probe_ui_flow.py`.~~ ✅ **Passes 12/12.** The Streamlit path is verified end
+   to end for the first time — boot reaches `READY` through `downloading → warming`, the running view
+   survives nineteen poll re-runs, lines reach the buffer, Stop fires, and a session record is
+   written to a temporary history. Both its defects were in the harness, not the app: a race with the
+   application's own background boot thread, and a check that read a non-existent attribute and so
+   could never pass.
+2. ~~`cer_bucketed_60s` is an unclipped mean.~~ ✅ **Now the median**, mean kept under its own name,
+   all ten stored runs rescored (**V96**).
+3. ~~Test V99's numeral-versus-words hypothesis.~~ ✅ **Refuted** (**V107**). The cause is *"How
+   long…?"* phrasing: 20/20 missed with the trailing clause removed, 20/20 answered with the clause
+   kept and only the interrogative changed. V99's "52%" was two cases wide; it is 77% over eight.
+4. ~~Build an independently written utterance set for `probe_rag_cues.py`.~~ ✅ **Negatives done**
+   (**V108**): 250 real ASCEND turns, 0.45 costs **1 false positive in 250**. **The positive half is
+   still outstanding** — see item 7 below.
+5b. ~~Retention over a full hour.~~ ✅ **Done 2026-08-20** (**V110**): drift 0.03%, **zero dropped
+   blocks on both tracks**, every frame readable, 219.8 MB per hour. All four things **V98** left
+   open are answered.
 
-3. **~~`cer_bucketed_60s` is an unclipped mean and must not be quoted (V96).~~** One bucket scored
-   **16.59**, which decided the 60-minute figure on its own. Median and clipped mean both survive it.
-   The stored `cer_buckets` list is what makes this auditable — keep writing it. Fix the summary
-   field, then rescore the runs under `fixtures/asr/results/*-overnight/`.
-3. **Test V99's hypothesis, which is cheap and untested.** The advisor answered a question whose
-   answer was the numeral `11,000` 20/20, and one whose answer was the words *"eighteen months"*
-   1/20. Two shapes is not a pattern. Add cases whose answers are words versus numerals to
-   `tools/probe_advisor.py` and settle it.
-4. **`SERVE_THRESHOLD = 0.45` rests on ten utterances written by the session that wrote the
-   queries** (**V95**, **V100**, `docs/decisions/0014`). It is enough to prove 0.65 fired on
-   nothing and thin for the replacement value. Build a larger, independently written set for
-   `tools/probe_rag_cues.py` before anyone treats 0.45 as settled.
-5. ✅ **Done 2026-08-20, and it changed the answer (V109).** The ladder was repeated; ten runs now
-   exist. **The median spans 0.320 to 0.705**, so **V87**'s "~0.39" and **V96**'s "~0.41" are
-   single-run figures and the metric cannot support two decimals — quote **roughly 0.3 to 0.7**. The
-   qualitative conclusion is untouched: anywhere in that range the leak is legible, so headphones
-   remain a precondition. The mechanism is also settled: bucket count raises the *probability* of a
-   pathological bucket while short reference text is the *cause* — buckets above 1.0 appeared at
-   n=3, n=10 and n=44, so neither half of that explanation works alone.
+5. ~~Repeat the 60-minute bucketed leakage rung.~~ ✅ **Done, and it narrowed the claim** (**V109**):
+   ten runs put the median at **0.32–0.70**, so no leakage figure survives two decimal places.
+
+**What is actually left, in priority order:**
+
+6. ~~A micro-average for the leakage metric.~~ ❌ **Refuted 2026-08-20, and my reasoning for
+   proposing it was wrong** (**V109**, `tools/rescore_leakage_micro.py`). Weighting each bucket by its
+   reference length makes things *worse*, not better: spread 1.971 against the median's 0.384, because
+   edit distance scales with the **hypothesis** and a bad bucket with plenty of reference text gets
+   *more* weight. What works is **boundedness** — the median and clipped mean agree to 0.004 and are
+   five times more reproducible than either unbounded form. `cer_bucketed_60s` is already the median,
+   so **no further metric change is warranted** and this is closed rather than outstanding.
+7. ⛔ **The positive half of the RAG threshold cannot be done with anything in this repository, and
+   the design I proposed for it was based on a property the corpus does not have.** Attempted
+   2026-08-20. I claimed ASCEND's 1130 turns would give notes from one speaker and queries from later
+   turns in the same conversation. Measured before building it:
+
+   - **0 of 1130 references contain any punctuation**, so there are **7** turns that look like
+     questions at all and one of usable length. There are no real questions to use as queries.
+   - **Median turn length is 12 characters.** These are conversational fragments, not note-sized
+     statements.
+   - The corpus is one loose topic — casual self-introduction — so conversational adjacency would not
+     separate a related note from an unrelated one. Ranking by adjacency would measure nothing.
+
+   **What it would need is a corpus of genuine document–question pairs**, which is a new download and
+   a new dependency, and therefore the operator's call rather than something to add quietly.
+
+   **Until then the asymmetry stands and should be quoted with the threshold:** the negative side of
+   `SERVE_THRESHOLD = 0.45` is strong — 1 false positive in 250 real unauthored utterances
+   (**V108**) — and the positive side rests on five paraphrases written by the session that chose the
+   value (**V95**). The value is defensible because a *lower* threshold's risk is false positives, and
+   that is the half now measured properly.
+8. **The UI flow with the gate live.** `probe_ui_flow.py` passed while `VAD_GATE` was empty. The gate
+   ships on since `docs/decisions/0015`, so the Streamlit path **has never run with a live gate** —
+   about five minutes, and it is the arrangement a real operator now gets.
+
+**Deliberately not on this list:** mitigating the *"how long"* blind spot (**V107**). The generative
+slot ships off (`docs/decisions/0014`) on **V106**'s 2.01x latency cost, so mitigating it would be
+measuring something switched off. It waits for that decision to be revisited.
 
 #### B. Needs the operator, and cannot be simulated
 

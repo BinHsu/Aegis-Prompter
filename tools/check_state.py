@@ -27,9 +27,15 @@ DECISIONS_DIR = os.path.join(REPO_ROOT, "docs", "decisions")
 # not a definition, which is why the dash is part of the pattern.
 DEFINITION = re.compile(r"^- \*\*(R\d+|V\d+)\*{0,2}\s*(?:—|--)", re.M)
 CITATION = re.compile(r"\b([RV]\d+)\b")
-# Plan sections are 7.1 through 7.7. The guards keep prose decimals out: a
-# measured "CER 7.71" must not read as a citation of section 7.7.
-PLAN_NUMBER = re.compile(r"(?<!\d)7\.\d(?![\d.])")
+# A plan citation is `7.5`, and REQUIREMENTS.md is mostly measurements -- so `+7.5 MB`, `7.5x` and
+# `7.5%` all matched the first version of this pattern and failed the build for citing a plan number
+# that was never mentioned. Found 2026-08-20 by a peak-memory figure of 7.5 MB. Two exclusions, both
+# narrow: a preceding sign or tilde marks a quantity, and a following unit does the same. Anything
+# that still matches is a bare `7.5` in prose, which is what a plan citation looks like.
+_UNITS = r"(?:(?:s|ms|x|MB|GB|KB|MiB|GiB|dB|dBFS|Hz|kHz|min|h)\b|%)"
+PLAN_NUMBER = re.compile(
+    r"(?<![\d+\-~=])7\.\d(?![\d.])(?!\s*" + _UNITS + r")"
+)
 
 
 def read(path):
