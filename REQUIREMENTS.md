@@ -2881,6 +2881,44 @@ Verified with Command Line Tools `clang` only — **no Xcode required**.
   of the same case: fabrication 3%, 1%, 3%; prose declines 14%, 11%, 11%; correct declines on the one
   failing unanswerable case 3/20, 8/20, 8/20. **Quote these as single digits, not to a decimal.**
 
+- **V108 — 0.45 costs one false positive in 250 utterances of real, unauthored speech.** Measured
+  2026-08-20 with `tools/probe_rag_cues.py`, extended so the negative set is **not written by
+  whoever wrote the queries** — 250 transcribed turns from the ASCEND fixture's `reference` column,
+  genuine code-switched conversation about family, study and food, none of it related to the invented
+  programme notes and none of it authored here.
+
+  **This addresses the specific weakness V95 and `docs/decisions/0014` both named.** Lowering the
+  threshold makes false positives the risk that matters, and the five "obviously unrelated" lines
+  that chose 0.45 were written by the same session as the queries.
+
+  | | Value |
+  |---|---|
+  | Utterances scored | **250** |
+  | Median score | 0.105 |
+  | 95th percentile | 0.259 |
+  | Maximum | 0.589 |
+  | **False positives at 0.45** | **1 of 250 — 0.4%** |
+
+  | Threshold | False positives on real speech | True cues fired (V95's set) |
+  |---|---|---|
+  | 0.35 | 4 | 5/5 |
+  | 0.40 | 1 | 4/5 |
+  | **0.45 (shipped)** | **1** | **4/5** |
+  | 0.55 | 1 | 2/5 |
+  | 0.65 | **0** | **0/5** |
+
+  **The one false positive is defensible rather than absurd.** *"three to four minutes"*, scoring
+  0.589, against an indexed note whose subject is *"Recovery time objective is now fifteen minutes,
+  down from four hours"*. A duration phrase matching a duration note is retrieval working on a line
+  that happens not to be about the programme — which is what a **0.4%** rate on unrelated
+  conversation looks like from the inside.
+
+  **What this settles and what it does not.** It settles that 0.45 does not flood a real meeting: the
+  95th percentile of genuine conversation sits at 0.259, well clear of the gate. It does **not**
+  settle the positive side — the five paraphrases that produce "4 of 5" are still written here, and a
+  hit rate measured against self-authored positives remains the weak half. **The negative half is now
+  the strong half, which is the reverse of the position V95 was in.**
+
 - **V101 — Gated, the segmentation table can choose again, and it chooses what V66 already chose.**
   Measured 2026-08-20, `tools/measure_segmentation.py` run twice on the same fixture in the same
   session, one variable changed: `--gate`.

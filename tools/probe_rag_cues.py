@@ -80,6 +80,38 @@ UTTERANCES = [
 ]
 
 
+# **The negative set is real human speech, not my sentences.** Lowering `SERVE_THRESHOLD` to 0.45
+# (**V95**, `docs/decisions/0014`) makes false positives the risk that matters, and the ten hand-
+# written utterances that chose 0.45 included five "obviously unrelated" lines written by whoever
+# wrote the queries -- which is the weakest part of that measurement and the easiest to fix. ASCEND's
+# fixture carries 1130 transcribed turns of genuine code-switched conversation about family, study
+# and food; none of it relates to the invented programme notes below, and none of it was authored
+# here. A cue firing on any of it is a false positive on real speech.
+TURNS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                     "fixtures", "asr", "conversation", "turns.tsv")
+
+
+def real_speech_negatives(limit=250, min_chars=12):
+    """Real transcribed utterances from the fixture, as an unauthored negative set.
+
+    Short turns are dropped: `is_worth_embedding` rejects them in production anyway, so including
+    them would pad the denominator with lines the live path never scores.
+    """
+    import csv
+
+    if not os.path.exists(TURNS):
+        return []
+    out = []
+    with open(TURNS, encoding="utf-8") as handle:
+        for row in csv.DictReader(handle, delimiter="\t"):
+            text = (row.get("reference") or "").strip()
+            if len(text) >= min_chars:
+                out.append(text)
+            if len(out) >= limit:
+                break
+    return out
+
+
 def build_temp_index(settings, local_dir):
     """Write the invented notes into a fresh collection at `local_dir`. Returns the chunk count."""
     import bootstrap
@@ -132,6 +164,8 @@ def main():
 
         rows, correct = [], 0
         print(f"threshold {SERVE_THRESHOLD} (V22)\n")
+        negatives = real_speech_negatives()
+        print(f"  unauthored negative set: {len(negatives)} real transcribed utterances\n")
         print(f"  {'expected':<9}{'fired':<7}{'score':>7}  utterance")
         for utterance, expectation, why in UTTERANCES:
             # Suppression is a display rule, not a scoring rule. Left on, it would zero every
@@ -147,6 +181,31 @@ def main():
             mark = " " if ok else "*"
             shown = f"{score:.3f}" if score is not None else "  --  "
             print(f"{mark} {expectation:<9}{str(fired):<7}{shown:>7}  {utterance[:52]}")
+
+        # Score the real-speech negatives separately: they are a false-positive rate, not a table.
+        if negatives:
+            advisor.last_matched_idx = -1
+            scores, fired = [], []
+            for utterance in negatives:
+                advisor.last_matched_idx = -1
+                verdict = advisor.analyze_dialogue(utterance)
+                if verdict.score is None:
+                    continue
+                scores.append(verdict.score)
+                if verdict.hint:
+                    fired.append((verdict.score, utterance))
+            scores.sort()
+            print(f"\n  === real speech, unauthored: {len(scores)} utterances scored ===")
+            print(f"    max score {scores[-1]:.3f}   95th pct {scores[int(.95*len(scores))]:.3f}"
+                  f"   median {scores[len(scores)//2]:.3f}")
+            print(f"    FALSE POSITIVES at {SERVE_THRESHOLD}: {len(fired)}/{len(scores)}"
+                  f"  ({100*len(fired)/len(scores):.1f}%)")
+            for score, utterance in sorted(fired, reverse=True)[:5]:
+                print(f"      {score:.3f}  {utterance[:60]}")
+            for thr in (0.35, 0.40, 0.45, 0.50, 0.55, 0.65):
+                n = sum(1 for v in scores if v >= thr)
+                print(f"    at {thr:.2f}: {n:>3} false positives"
+                      + ("   <-- shipped" if abs(thr - SERVE_THRESHOLD) < 1e-9 else ""))
 
         want_fire = [r for r in rows if r["expected"] == "fire"]
         want_quiet = [r for r in rows if r["expected"] == "quiet"]

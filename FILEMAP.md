@@ -1161,12 +1161,13 @@ R37 on non-speech that is not a synthesized tone. The measurement behind V60, an
 - `summarise()` (L130)
 - `main()` (L241)
 
-### `tools/probe_rag_cues.py` — 207 lines
+### `tools/probe_rag_cues.py` — 266 lines
 
 Does a retrieval cue fire when it should, and stay quiet when it should not?
 
-- `build_temp_index()` (L83)
-- `main()` (L105)
+- `real_speech_negatives()` (L94)
+- `build_temp_index()` (L115)
+- `main()` (L137)
 
 ### `tools/probe_ui_flow.py` — 226 lines
 
