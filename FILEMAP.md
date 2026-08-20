@@ -1168,11 +1168,11 @@ Does a retrieval cue fire when it should, and stay quiet when it should not?
 - `build_temp_index()` (L83)
 - `main()` (L105)
 
-### `tools/probe_ui_flow.py` — 160 lines
+### `tools/probe_ui_flow.py` — 184 lines
 
-Drive the real application through Start, a fed transcript, and Stop.
+Drive the real application through Start, a fed transcript, and Stop. **KNOWN BROKEN.**
 
-- `main()` (L43)
+- `main()` (L67)
 
 ### `tools/score_real_fixtures.py` — 207 lines
 

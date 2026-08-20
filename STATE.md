@@ -431,34 +431,89 @@ the full amendment.
 
 ### 🔭 What the next session picks up
 
-**Nothing, without the operator.** In priority order, what they need to do:
+**Rewritten 2026-08-20 07:58. The previous version of this section said "Nothing, without the
+operator" and listed three things that have since happened** — re-listen has run, the generative
+advisor has produced tokens, and retention has written files. It was stale for a day and would have
+sent a cold reader looking for work that was already done. Assume this section decays the same way
+and check the dates on the `V*` entries it cites.
 
-1. **Press re-listen once**, on a session with retained audio. That single press installs
-   `pyannote` (47 packages), fetches the gated weights, and runs the first clustering. **The whole
-   path is unrun**, including the install itself. If they would rather not create a Hugging Face
-   token, `DIARIZE_MODEL` can be set to `ivrit-ai/pyannote-speaker-diarization-3.1` — MIT, ungated,
-   fully local, and a third-party re-host, which is a supply-chain judgement rather than a free
-   lunch.
-2. **Point `LLM_BASE_URL` at something.** The generative advisor has never produced a token. The
-   pre-flight **rehearsal** exists for exactly this — it sends their own questions through the
-   production prompt and shows what comes back, which is how **V23**'s flooding risk becomes
-   visible before a hearing rather than during one.
-3. **A desk dry run**, twenty minutes: notes in `context/docs/`, `build_index.py`, retention
-   armed, talk for five minutes, Stop. That settles the boot flow, the audio devices, the archive
-   writer and the session record in one go.
-4. **7.9, the real meeting.** Read **V70** first: it must be run on headphones, and that is
-   evidence rather than preference.
+#### A. Experiments that need no person, in priority order
 
-**The operator asked on 2026-08-17 that experiments be held.** Do not start soaks, benchmarks or
-device runs on your own initiative; ask.
+1. **`tools/probe_ui_flow.py` is committed and does not work.** It drives the real `app.py` through
+   `AppTest` to Start → fed transcript → Stop, and three of its checks fail: no transcript lines
+   reach the buffer, no Stop control appears, and no session record is written. Observed 2026-08-20:
+   the streams open and close about half a second later, so **the session does not stay up across
+   the poll re-runs**. Its docstring also claims it "opens no microphone" and **that is false** —
+   the log shows `Input stream live on [0] 'MacBook Pro Microphone'`, so `AEGIS_V52_FEED` was not
+   honoured. Fix the tool or delete it; a broken probe in `tools/` is worse than none, because the
+   next reader assumes it works. **This is the only path in the product that no test or soak
+   covers**: everything else drives `GlobalState` directly and bypasses Streamlit entirely.
+2. **`cer_bucketed_60s` is an unclipped mean and must not be quoted (V96).** One bucket scored
+   **16.59**, which decided the 60-minute figure on its own. Median and clipped mean both survive it.
+   The stored `cer_buckets` list is what makes this auditable — keep writing it. Fix the summary
+   field, then rescore the runs under `fixtures/asr/results/*-overnight/`.
+3. **Test V99's hypothesis, which is cheap and untested.** The advisor answered a question whose
+   answer was the numeral `11,000` 20/20, and one whose answer was the words *"eighteen months"*
+   1/20. Two shapes is not a pattern. Add cases whose answers are words versus numerals to
+   `tools/probe_advisor.py` and settle it.
+4. **`SERVE_THRESHOLD = 0.45` rests on ten utterances written by the session that wrote the
+   queries** (**V95**, **V100**, `docs/decisions/0014`). It is enough to prove 0.65 fired on
+   nothing and thin for the replacement value. Build a larger, independently written set for
+   `tools/probe_rag_cues.py` before anyone treats 0.45 as settled.
+5. **The 60-minute bucketed leakage figure has been measured once (V96).** V87's own conclusion is
+   that a single run of that metric cannot be quoted. Two more runs of the 60-minute rung would make
+   it a mean rather than an observation.
 
-⚠️ **Lifted for one piece of work, later the same day, and it is worth recording that it was
-lifted rather than ignored.** The operator changed the ASR model on supply-chain grounds and
-authorised unattended work with a stated goal: *integrate the new model, and re-run the
-experiments that had been done on the old one.* The runs under
-`## 🔄 The ASR model changed on supply-chain grounds` were made under that authorisation. **The
-hold above still stands for everything else**, and it never covered the device runs in the list —
-those need the operator's hands regardless.
+#### B. Needs the operator, and cannot be simulated
+
+1. **V45** — one click on the folder-dialog opt-in button. The question is whether a *native* dialog
+   deadlocks Streamlit's rerun; stubbing `subprocess.run` is precisely what proves nothing.
+2. **The real meeting, on headphones.** **V87** and **V96** make headphones evidence rather than
+   preference. Every latency figure here measures the machine; whether a person can read the running
+   view while speaking is what **R9** claims and no fixture answers it.
+3. **Speaker-attribution accuracy has no ground truth (V105)**, and the tap and microphone tracks of
+   one session disagree on speaker count at ten minutes. A real meeting with known participants is
+   the cheapest ground truth available.
+
+#### C. Operational facts that will otherwise be rediscovered the hard way
+
+- **The CodeRabbit check cannot fail, so do not treat it as a merge gate.** Across four attempts on
+  PR #1 it reported `pass` for four *different* states in which no review happened: skipped for OSS
+  policy, skipped for exceeding 100 files, `Review completed` while `Failed to post review comments`,
+  and rate limited. There is no observable state in which it is not green. A review only runs on a
+  manual `@coderabbitai full review` comment, once per head commit, and the account has a fair-usage
+  ceiling. `.coderabbit.yaml` does load and does filter (verified: profile ASSERTIVE, 9 files
+  filtered, 100 selected) — it is the *status* that is meaningless.
+- **Pressing Start writes to `.env`.** `app.py` persists `ARCHIVE_AUDIO` and `MIC_DEVICE` at Start
+  so a failed download does not lose the operator's preferences. Any probe that drives the UI
+  therefore **changes their configuration as a side effect** — one did, on 2026-08-20, arming
+  retention and leaving two stray WAVs under the archive directory.
+- **`RETAIN_AUDIO` is not a setting.** The key is `ARCHIVE_AUDIO`. A report of "retention is off"
+  was once made by reading the non-existent name, which returns empty for any spelling and is
+  therefore evidence of nothing. Check names against `bootstrap.SETTINGS_FIELDS`.
+- **`huggingface_hub` cannot reach the Hub on this machine** — `CERTIFICATE_VERIFY_FAILED` against a
+  Cloudflare Gateway CA — while `curl` and `pip` can. So `bootstrap.download_models` and the settings
+  page's availability check are both dead here, and the error reads as "check your connection".
+  `tools/hf_curl_place.py` is the workaround and needs no change to what any tool trusts.
+- **Shell traps, all three found here.** macOS ships bash 3.2: `mapfile` and `readarray` do not
+  exist. `grep -c` prints its count *and* exits non-zero at zero, so `$(grep -c … || echo 0)` yields
+  two lines and breaks the integer test after it. A `trap` on INT or TERM must `exit` explicitly or
+  bash continues to the next command with state already restored.
+- **`finally` does not run on SIGTERM** in Python — the default handler terminates without
+  unwinding, so only SIGINT would trigger it. A teardown written in `finally` and relied on for
+  SIGTERM is decorative; register `signal.signal` explicitly, or do not spawn a child from a process
+  nothing can address.
+
+#### D. The one pattern behind most of the above
+
+Six safeguards in this work looked healthy and could not fail: a voice gate that failed open for
+every run labelled *gate on* (**V91**), two preconditions that matched their own invoking shell, a
+guard broken by `grep -c` exiting 1, a measurement stage globbing a frozen directory (**V104**), a
+diarization sanity line checking for a floor of *exactly* 0 against a real floor of 0.02 s
+(**V105**), and CodeRabbit's own status. **A check or a measurement that cannot fail reads exactly
+like one that is passing.** The only defence that worked in every case was asking what the check
+would print if the thing it guards were broken, and then arranging to see it. `voice_gate.is_live`,
+the retention first-five-seconds comparison, and the gated R37 column all exist for that reason.
 
 ---
 

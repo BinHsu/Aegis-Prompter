@@ -1,7 +1,29 @@
 #!/usr/bin/env python3
-"""Drive the real application through Start, a fed transcript, and Stop.
+"""Drive the real application through Start, a fed transcript, and Stop. **KNOWN BROKEN.**
 
-**The gap.** Every soak in this repository calls `GlobalState` directly. Nothing has ever driven
+🚨 **This does not work yet, and it is committed anyway so the gap is visible rather than lost.**
+Run 2026-08-20: it reaches the pre-flight and clicks Start without raising, survives fifteen poll
+re-runs, and then fails three checks -- no transcript line reaches the buffer, no Stop control
+appears, and no session record is written. The engine log shows both streams opening and closing
+**about half a second later**, so the session does not survive the poll re-runs; that is the thing
+to diagnose first.
+
+🚨 **The claim two paragraphs below that this "opens no microphone" is FALSE as written.** The same
+run logged `[Speaker (You)] Input stream live on [0] 'MacBook Pro Microphone'`, so `AEGIS_V52_FEED`
+was not honoured and a real device opened. Either the variable is read before this sets it, or
+`start_recording` is reached by a path that ignores it. Until that is understood, **this probe is
+not silent and not safe to run at an arbitrary hour**.
+
+⚠️ **It also changes the operator configuration as a side effect.** `app.py` persists
+`ARCHIVE_AUDIO` and `MIC_DEVICE` at Start, so clicking Start through this harness armed retention
+in the real `.env` and left two WAV files under the archive directory. That was reverted by hand.
+A future version must redirect those the way it already redirects the history directory.
+
+Fix it or delete it. A probe in `tools/` that reports failures of its own making teaches the next
+reader nothing, and one that misdescribes itself is worse than one that is merely broken.
+
+**The gap this is meant to close, and still the reason to fix rather than delete it.** Every soak in
+this repository calls `GlobalState` directly. Nothing has ever driven
 `app.py` itself past the settings page: the role gate, the pre-flight panel, the `▶️ Start capture`
 button, the running view's fragment, `⏹️ Stop capture`, and the post-meeting prompt have never been
 exercised end to end. `tests/unit/` reaches `start_recording` with the audio and advisor stubbed,
@@ -12,9 +34,11 @@ which tests the arming gate and says nothing about whether the screen a person l
 - **It writes no session into `history/`.** `DialogueBuffer.start_session` defaults its
   `history_dir` to the real one, so a probe run would drop a fake meeting into the operator's own
   record. Patched to a temporary directory here, and the patch is asserted rather than assumed.
-- **It opens no microphone.** `AEGIS_V52_FEED` injects a WAV into the Speaker track and tells
-  `start_recording` not to open a device (the existing lab hook, **V52**). So this is silent and can
-  run at any hour, which is the whole reason it is worth having separately from the acoustic queue.
+- ~~**It opens no microphone.**~~ **Refuted by running it -- see the banner above.** The intent was
+  that `AEGIS_V52_FEED` injects a WAV into the Speaker track and tells `start_recording` not to open
+  a device (the existing lab hook, **V52**), which would make this silent and runnable at any hour.
+  Measured: a real microphone opened anyway. The intent is kept here because it is what the fix
+  should restore, and struck through because it is not what the code does.
 
 **What it can therefore establish, and what it cannot.** It establishes that the boot sequence
 reaches a running view, that transcript lines appear in it, and that Stop closes a session and
