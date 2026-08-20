@@ -116,8 +116,17 @@ def has_speech(audio, model_id="", min_speech_s=None, sample_rate=TARGET_SR):
 def settings_from(values):
     """`(enabled, model_id, min_speech_s)` from the settings mapping. Pure; no I/O.
 
-    Off unless explicitly enabled. A gate that starts discarding audio because a dependency
-    appeared would be a behaviour change nobody asked for (**R41**).
+    **Enabled unless explicitly turned off, since 2026-08-20** (`docs/decisions/0015`). This
+    previously read "off unless explicitly enabled", on the **R41** reasoning that a gate which
+    starts discarding audio *because a dependency appeared* would be a behaviour change nobody asked
+    for. **That reasoning stands and is not what changed.** The default flipped on a deliberate,
+    recorded decision after **V97** measured an hour with the gate genuinely live, and this function
+    still reads the setting rather than the presence of the package -- so an appearing dependency
+    still changes nothing by itself.
+
+    The value here is what `.env` says; the shipped default lives in `bootstrap.SETTINGS_FIELDS`.
+    An empty or unparseable value is off, which keeps a hand-mangled `.env` from silently enabling
+    screening.
     """
     raw = (values.get("VAD_GATE") or "").strip().lower()
     enabled = raw in ("1", "true", "yes", "on")

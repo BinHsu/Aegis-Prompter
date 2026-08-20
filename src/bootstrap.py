@@ -104,14 +104,19 @@ SETTINGS_FIELDS = [
                "changes nothing else.",
           warning="A token is a credential. It is stored in `.env` like the others and is never "
                   "rendered to a remote browser (R43)."),
-    Field("VAD_GATE", "Screen out non-speech before transcribing", default="false",
-          help="Off by default. When on, a voice-activity detector runs on each segment and "
-               "segments without speech are never transcribed. Measured: it removes **65%** of "
+    # **On by default since 2026-08-20** (`docs/decisions/0015`), on the operator's decision after
+    # V97 measured an hour with it genuinely live: 67 rejections, worst-case queue dwell down from
+    # 6521 to 2898 ms, and latency unchanged within noise. Ungated the shipped model invents an
+    # utterance from essentially every non-speech segment -- 253 of 253, twice, in two environments
+    # (V102) -- so "off" was never a neutral default, it was a choice to keep that behaviour.
+    Field("VAD_GATE", "Screen out non-speech before transcribing", default="true",
+          help="On by default since 2026-08-20. When on, a voice-activity detector runs on each "
+               "segment and segments without speech are never transcribed. Measured: it removes **65%** of "
                "real non-speech and **96%** of instrumental music, costs **3%** of quiet real "
                "speech, and touches no clean speech (V82). It is also *faster* — 32 ms to skip a "
                "decode that costs up to 2235 ms (V83). Leave it off and every segment is "
-               "transcribed, which is what happens today: the model invents a sentence from "
-               "almost every piece of non-speech (V72, V79).",
+               "transcribed, and the model then invents a sentence from essentially every piece "
+               "of non-speech -- 253 of 253 (V72, V79, V102).",
           warning="This discards audio before it is transcribed. It fails open — any error "
                   "transcribes the segment — but when it works it is deciding what never reaches "
                   "the record (R3)."),

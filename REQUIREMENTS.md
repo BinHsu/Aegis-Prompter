@@ -2454,6 +2454,13 @@ Verified with Command Line Tools `clang` only — **no Xcode required**.
   post-processing concern (**R49**) rather than a model defect — but it should be stated as a
   proportion rather than a leaning.
 
+  ✅ **Dispositioned by the operator 2026-08-20: accepted as is, no post-processing.** Their word was
+  *無所謂* — it does not matter. **R10** wants Traditional for the Taiwan context and is explicitly
+  subject to **R9**, so the live path keeps whatever the model emits and no conversion is built.
+  **V104**'s 81% therefore stands as a recorded property of the output rather than an open defect,
+  and `R49`'s cleanup pass remains where a person could change it by hand if a particular meeting
+  needs it.
+
 - **V91 — Every soak that reported "gate on" ran with the gate failed open, because the gate's
   weights were only ever in the disposable bake-off cache.** Found 2026-08-19, not by a test —
   by turning the gate on by hand in the product environment and watching it fail.

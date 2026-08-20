@@ -109,49 +109,49 @@ Input-device enumeration. Nothing here loads a model or opens a stream.
 - `default_input_name()` (L43)
 - `resolve_input_device()` (L55)
 
-### `src/bootstrap.py` — 800 lines
+### `src/bootstrap.py` — 805 lines
 
 Configuration, path derivation and startup readiness.
 
 - `class Field` (L44)
-- `read_settings()` (L161)
-- `_quote()` (L181)
-- `render_env()` (L191)
-- `write_settings()` (L217)
-- `delete_settings()` (L252)
-- `normalize_root()` (L268)
-- `derive_paths()` (L282)
-- `resolve_archive_dir()` (L296)
-- `is_configured()` (L304)
-- `missing_required()` (L309)
-- `format_bytes()` (L316)
-- `_tree_stats()` (L325)
-- `inspect_root()` (L353)
-- `_is_writable()` (L369)
-- `fingerprint()` (L391)
-- `enforce_offline()` (L406)
-- `apply_environment()` (L440)
-- `applied_fingerprint()` (L465)
-- `needs_restart()` (L470)
-- `begin_boot()` (L503)
-- `invalidate_boot()` (L511)
-- `current_boot_id()` (L523)
-- `get_readiness()` (L528)
-- `set_readiness()` (L533)
-- `is_ready()` (L543)
-- `progress_snapshot()` (L547)
-- `_record_progress()` (L553)
-- `resolved_model()` (L565)
-- `required_repos()` (L570)
-- `essential_repos()` (L580)
-- `weights_present()` (L607)
-- `repo_cache_dir()` (L627)
-- `expected_repo_bytes()` (L640)
-- `_watch_repo_bytes()` (L667)
-- `download_models()` (L692)
-- `index_status()` (L753)
-- `_host_only()` (L776)
-- `is_local_host()` (L787)
+- `read_settings()` (L166)
+- `_quote()` (L186)
+- `render_env()` (L196)
+- `write_settings()` (L222)
+- `delete_settings()` (L257)
+- `normalize_root()` (L273)
+- `derive_paths()` (L287)
+- `resolve_archive_dir()` (L301)
+- `is_configured()` (L309)
+- `missing_required()` (L314)
+- `format_bytes()` (L321)
+- `_tree_stats()` (L330)
+- `inspect_root()` (L358)
+- `_is_writable()` (L374)
+- `fingerprint()` (L396)
+- `enforce_offline()` (L411)
+- `apply_environment()` (L445)
+- `applied_fingerprint()` (L470)
+- `needs_restart()` (L475)
+- `begin_boot()` (L508)
+- `invalidate_boot()` (L516)
+- `current_boot_id()` (L528)
+- `get_readiness()` (L533)
+- `set_readiness()` (L538)
+- `is_ready()` (L548)
+- `progress_snapshot()` (L552)
+- `_record_progress()` (L558)
+- `resolved_model()` (L570)
+- `required_repos()` (L575)
+- `essential_repos()` (L585)
+- `weights_present()` (L612)
+- `repo_cache_dir()` (L632)
+- `expected_repo_bytes()` (L645)
+- `_watch_repo_bytes()` (L672)
+- `download_models()` (L697)
+- `index_status()` (L758)
+- `_host_only()` (L781)
+- `is_local_host()` (L792)
 
 ### `src/build_index.py` — 115 lines
 
@@ -299,7 +299,7 @@ Pure text filters applied to ASR output before it reaches the dialogue buffer.
   - `start()`
   - `stop()`
 
-### `src/voice_gate.py` — 155 lines
+### `src/voice_gate.py` — 164 lines
 
 Decide whether a segment contains speech, before it costs a decode.
 
@@ -307,7 +307,7 @@ Decide whether a segment contains speech, before it costs a decode.
 - `_load()` (L62)
 - `has_speech()` (L92)
 - `settings_from()` (L116)
-- `is_live()` (L132)
+- `is_live()` (L141)
 
 ## `tests/unit/`
 

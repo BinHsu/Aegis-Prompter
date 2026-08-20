@@ -268,8 +268,18 @@ not interrupt anything: `RUN.log` reached `== DONE` at 23:58:43 and the last res
    model at 635 ms against 1173 ms per-track medians over an hour.
 2. **Whether to act on V88's asymmetry.** Making the far party's track win the lock is a product
    decision with an **R9** justification, not a tidy-up.
-3. **Whether to turn the gate on by default**, and whether to restore any text filter (**V78**,
-   **V85** — the evidence says the blacklist is not worth it).
+3. ✅ **Decided 2026-08-20: the gate ships ON** (`docs/decisions/0015`), on the operator's
+   criterion of significant improvement against resource cost. Off was never neutral — ungated the
+   model invents from 253 of 253 non-speech segments (**V102**) — and **V97** measured an hour with
+   the gate genuinely live: 67 rejections, worst-case queue dwell 6521 → 2898 ms, medians flat, zero
+   exceptions. The **R41** reasoning is not overturned: `settings_from` still reads the setting and
+   not the presence of the package, so an appearing dependency still changes nothing by itself.
+   **The blacklist stays out** — built the modern way it removes 5% (**V85**).
+
+   ⚠️ **Default-on makes V91's trap more likely, not less.** A gate that fails open screens nothing
+   while every number looks healthy. `voice_gate.is_live()`, the `--gate` refusals in
+   `soak_capture.py` and `measure_segmentation.py`, and the preflight's `voice gate LIVE` line are
+   preconditions of this decision, not extras.
 
    ✅ **Two neighbouring decisions are now closed, both on the operator's criterion of "significant
    improvement, and what it costs"** — see `docs/decisions/0014`. `SERVE_THRESHOLD` is **0.45**:
@@ -494,6 +504,12 @@ and check the dates on the `V*` entries it cites.
    the cheapest ground truth available.
 
 #### C. Operational facts that will otherwise be rediscovered the hard way
+
+- **CodeRabbit is parked until the review budget resets** — the operator's disposition,
+  2026-08-20: *明天過後 budget reset 再說*. Four attempts produced no findings and the account hit its
+  fair-usage ceiling, so further retries cost money for the same result. If it is picked up again,
+  the useful alternative is a real GitHub Actions workflow running `run_tests.sh`, because the repo
+  has no `.github/workflows` at all and that would be a check whose green means something.
 
 - **The CodeRabbit check cannot fail, so do not treat it as a merge gate.** Across four attempts on
   PR #1 it reported `pass` for four *different* states in which no review happened: skipped for OSS
