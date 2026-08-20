@@ -448,7 +448,21 @@ and check the dates on the `V*` entries it cites.
    honoured. Fix the tool or delete it; a broken probe in `tools/` is worse than none, because the
    next reader assumes it works. **This is the only path in the product that no test or soak
    covers**: everything else drives `GlobalState` directly and bypasses Streamlit entirely.
-2. **`cer_bucketed_60s` is an unclipped mean and must not be quoted (V96).** One bucket scored
+2. ✅ **Done 2026-08-20: `cer_bucketed_60s` is now the median** (**V96**), the mean is kept under its
+   own name, and every stored run was rescored. **But the next step is already visible and is
+   better than what landed.** The 3-minute rung of the 19:32 run produced a bucket scoring **6.15**,
+   giving a mean of 2.4065 against a median of 0.7045 — at *three* minutes, not sixty. So the
+   mechanism is **not** "error grows with bucket count", which is only the probability of hitting a
+   bad bucket; it is **buckets whose reference text is short**, where a near-silent minute gives a
+   tiny denominator and any microphone output becomes an enormous insertion ratio.
+
+   **The principled statistic is a micro-average: total edits divided by total reference characters
+   across buckets.** It avoids the single-string alignment problem **V87** rejected *and* the
+   small-denominator explosion the bucketed mean introduced. It needs the tool to record per-bucket
+   edit counts and reference lengths rather than only the ratio, which it does not yet do. Do this
+   before quoting any leakage figure to two decimal places.
+
+3. **~~`cer_bucketed_60s` is an unclipped mean and must not be quoted (V96).~~** One bucket scored
    **16.59**, which decided the 60-minute figure on its own. Median and clipped mean both survive it.
    The stored `cer_buckets` list is what makes this auditable — keep writing it. Fix the summary
    field, then rescore the runs under `fixtures/asr/results/*-overnight/`.
@@ -460,9 +474,13 @@ and check the dates on the `V*` entries it cites.
    queries** (**V95**, **V100**, `docs/decisions/0014`). It is enough to prove 0.65 fired on
    nothing and thin for the replacement value. Build a larger, independently written set for
    `tools/probe_rag_cues.py` before anyone treats 0.45 as settled.
-5. **The 60-minute bucketed leakage figure has been measured once (V96).** V87's own conclusion is
-   that a single run of that metric cannot be quoted. Two more runs of the 60-minute rung would make
-   it a mean rather than an observation.
+5. ✅ **Done 2026-08-20, and it changed the answer (V109).** The ladder was repeated; ten runs now
+   exist. **The median spans 0.320 to 0.705**, so **V87**'s "~0.39" and **V96**'s "~0.41" are
+   single-run figures and the metric cannot support two decimals — quote **roughly 0.3 to 0.7**. The
+   qualitative conclusion is untouched: anywhere in that range the leak is legible, so headphones
+   remain a precondition. The mechanism is also settled: bucket count raises the *probability* of a
+   pathological bucket while short reference text is the *cause* — buckets above 1.0 appeared at
+   n=3, n=10 and n=44, so neither half of that explanation works alone.
 
 #### B. Needs the operator, and cannot be simulated
 

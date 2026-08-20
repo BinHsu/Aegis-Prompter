@@ -2919,6 +2919,45 @@ Verified with Command Line Tools `clang` only — **no Xcode required**.
   hit rate measured against self-authored positives remains the weak half. **The negative half is now
   the strong half, which is the reverse of the position V95 was in.**
 
+- **V109 — Repeated, the speaker-leak metric cannot support the precision it has been quoted at: the
+  median spans 0.32 to 0.70 across ten runs.** Measured 2026-08-20 by repeating the 3/10/60-minute
+  ladder, which is what **V87** asked for when it concluded that a single run of this metric cannot
+  be quoted. Ten runs now exist, all rescored with the median that **V96** installed.
+
+  | Run | Buckets | **Median** | Mean | Buckets over 1.0 |
+  |---|---|---|---|---|
+  | 08-18, 3 / 10 min | 3 / 10 | 0.4095 / 0.4082 | 0.3871 / 0.3892 | none |
+  | 08-19 2121, 3 / 10 min | 3 / 10 | 0.3276 / 0.5582 | 0.3097 / **0.9467** | — / 2 |
+  | 08-19 2230, 3 / 10 / 60 min | 3 / 10 / 44 | 0.3202 / 0.3780 / 0.4096 | 0.4055 / 0.3874 / **0.8388** | — / — / 3 |
+  | **08-20, 3 / 10 / 60 min** | 3 / 10 / 44 | **0.7045** / 0.4803 / **0.6008** | **2.4065** / 0.4735 / **2.1490** | 1 / — / **8** |
+
+  | | Range | Spread |
+  |---|---|---|
+  | **Median** | 0.320 – 0.705 | 0.384 |
+  | Mean | 0.310 – 2.406 | 2.097 (**5.5x wider**) |
+
+  🚨 **So V87's "~0.39" and V96's "~0.41 by median" are single-run figures and must not be quoted to
+  two decimals.** The honest statement is **roughly 0.3 to 0.7**, and the metric as built cannot do
+  better. Tonight's hour read 0.6008 against last night's 0.4096 for the same measurement, with 769
+  microphone lines against 487.
+
+  ✅ **The qualitative conclusion survives easily and is unaffected.** Anywhere in 0.3-0.7 the leak
+  is legible-but-degraded, whole phrases intact, all labelled as the operator. **Headphones remain a
+  precondition** (**V70**, **V87**). What changed is the confidence attachable to the number, not the
+  direction.
+
+  **The mechanism, now settled by the full set.** Buckets above 1.0 appear at **n=3, n=10 and n=44** —
+  both 44-bucket runs, two of four 10-bucket runs, one of four 3-bucket runs. So **bucket count
+  raises the probability** of containing one (**V96**'s original claim) while **short reference text
+  in a bucket is the cause** (its correction). Both halves were needed and each alone was wrong: a
+  3-bucket run scored 6.15, and a 10-bucket run scored clean twice.
+
+  **The next test is named rather than left implied.** A micro-average — total edit distance divided
+  by total reference characters across buckets — avoids both the single-string alignment problem
+  **V87** rejected and the small-denominator explosion its replacement introduced. The tool records
+  only per-bucket ratios, so this needs per-bucket edit counts and reference lengths first. Until
+  that exists, quote a range and not a figure.
+
 - **V101 — Gated, the segmentation table can choose again, and it chooses what V66 already chose.**
   Measured 2026-08-20, `tools/measure_segmentation.py` run twice on the same fixture in the same
   session, one variable changed: `--gate`.
