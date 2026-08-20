@@ -502,9 +502,12 @@ short. Anything struck through was on this list and is done; the `V*` entry carr
    (**V108**) — and the positive side rests on five paraphrases written by the session that chose the
    value (**V95**). The value is defensible because a *lower* threshold's risk is false positives, and
    that is the half now measured properly.
-8. **The UI flow with the gate live.** `probe_ui_flow.py` passed while `VAD_GATE` was empty. The gate
-   ships on since `docs/decisions/0015`, so the Streamlit path **has never run with a live gate** —
-   about five minutes, and it is the arrangement a real operator now gets.
+8. ~~The UI flow with the gate live.~~ ✅ **Done 2026-08-20 22:29, 12 of 12 pass** with the gate
+   loaded on CPU and no `unavailable` warning — recorded under *Verified after the change* in
+   `docs/decisions/0015`. Zero rejections, which is correct: the lab feed is continuous speech, so a
+   rejection would have been the finding. **Worth keeping as a habit rather than an item**: enabling
+   a default silently changed what "verified" meant for a path that had just been verified, and
+   nothing would have flagged that.
 
 **Deliberately not on this list:** mitigating the *"how long"* blind spot (**V107**). The generative
 slot ships off (`docs/decisions/0014`) on **V106**'s 2.01x latency cost, so mitigating it would be

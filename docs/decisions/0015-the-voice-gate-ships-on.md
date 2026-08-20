@@ -69,6 +69,20 @@ decision rather than a nice-to-have:
 Gateway CA while `curl` and `pip` succeed (**V93**, and the known issue in `STATE.md`).
 `tools/hf_curl_place.py` is the route, and it needs no change to what any tool trusts.
 
+## Verified after the change
+
+**The Streamlit path was re-run with the gate live**, because it had last passed while `VAD_GATE` was
+empty — so enabling a default silently changed what "verified" meant for a path that had just been
+verified. `tools/probe_ui_flow.py`, 2026-08-20 22:29:
+
+- **12 of 12 checks pass.** Boot reaches `READY` through `downloading → warming`, the running view
+  survives 22 poll re-runs, six lines reach the buffer, Stop appears and fires, and a session record
+  is written to a temporary history with nothing touching the operator's own.
+- **The gate engaged**: `[VoiceGate] ivrit-ai/pyannote-segmentation-3.0 loaded on CPU` in the engine
+  log, and **no** `unavailable` warning — which is the V91 check, passing.
+- **Zero rejections, and that is the correct outcome.** The lab feed is continuous real speech, so a
+  working gate should reject nothing. A rejection here would have been the finding.
+
 ## Alternatives rejected
 
 | Option | Why not |
