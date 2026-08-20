@@ -13,7 +13,7 @@ rather than trusting this file:
 python tools/gen_filemap.py
 ```
 
-**76 Python files.**
+**77 Python files.**
 
 ## `fixtures/asr/results/20260817-model-swap/`
 
@@ -1168,6 +1168,13 @@ Does a retrieval cue fire when it should, and stay quiet when it should not?
 - `real_speech_negatives()` (L94)
 - `build_temp_index()` (L115)
 - `main()` (L137)
+
+### `tools/probe_rag_positives.py` — 194 lines
+
+The positive half of the retrieval threshold, on questions nobody here wrote.
+
+- `load_corpus()` (L48)
+- `main()` (L65)
 
 ### `tools/probe_ui_flow.py` — 226 lines
 

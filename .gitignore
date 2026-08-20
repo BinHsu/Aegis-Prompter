@@ -79,3 +79,7 @@ src/native/aegis_tap
 
 # Local LLM interpreter for the generative advisor (V94). Disposable: rm -rf .venv-llm
 .venv-llm/
+
+# Third-party question-answering corpus for the retrieval probe (DRCD, CC BY-SA 3.0).
+# Fetched on demand by tools/probe_rag_positives.py; disposable: rm -rf .corpora-qa
+.corpora-qa/

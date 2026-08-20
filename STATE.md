@@ -482,9 +482,17 @@ short. Anything struck through was on this list and is done; the `V*` entry carr
    *more* weight. What works is **boundedness** — the median and clipped mean agree to 0.004 and are
    five times more reproducible than either unbounded form. `cer_bucketed_60s` is already the median,
    so **no further metric change is warranted** and this is closed rather than outstanding.
-7. ⛔ **The positive half of the RAG threshold cannot be done with anything in this repository, and
-   the design I proposed for it was based on a property the corpus does not have.** Attempted
-   2026-08-20. I claimed ASCEND's 1130 turns would give notes from one speaker and queries from later
+7. ✅ **Done 2026-08-21 with DRCD, and it found something worse than a weak measurement** — see
+   **V111**. When the retrieval slot speaks it names the **wrong note about 40% of the time** at a
+   realistic note count, recall@1 never exceeds 57%, and **no threshold can fix that** because it is
+   the embedding model's ranking rather than the gate. The self-authored positive set was not merely
+   weak: with five invented notes on five distinct topics it made picking the right one trivial, so it
+   **concealed the defect**. `docs/decisions/0014`'s threshold move is untouched; what is now in
+   question is whether the slot is worth showing at all. **Written questions, so 40% is optimistic** —
+   real speech is unpunctuated and code-switched and will retrieve worse.
+
+   ⛔ ~~Cannot be done with anything in this repository.~~ That was true of **ASCEND** and I recorded
+   it as true of the problem, which was wrong. Attempted 2026-08-20. I claimed ASCEND's 1130 turns would give notes from one speaker and queries from later
    turns in the same conversation. Measured before building it:
 
    - **0 of 1130 references contain any punctuation**, so there are **7** turns that look like

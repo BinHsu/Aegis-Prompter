@@ -3026,6 +3026,47 @@ Verified with Command Line Tools `clang` only — **no Xcode required**.
   report — **a missing track is not a zero**. Ninth instance in this work of a pattern that cannot
   match what it is looking for.
 
+- **V111 — When the retrieval slot speaks, it names the wrong note about 40% of the time, and no
+  threshold can fix that.** Measured 2026-08-21 with `tools/probe_rag_positives.py` against **DRCD**
+  (台達閱讀理解資料集, Traditional Chinese from Wikipedia, CC BY-SA 3.0, Delta Electronics, Taiwan):
+  1000 paragraphs, 3524 questions, each question attached by the dataset to the paragraph that answers
+  it. **Questions, notes and pairing are all DRCD's** — the first time the positive half of this
+  measurement has not been written here.
+
+  | Notes indexed | Fired at 0.45 | On the right note | **Wrong, as a share of fires** | Recall@1 |
+  |---|---|---|---|---|
+  | 10 | 23 / 30 (77%) | 14 | **39%** | 47% |
+  | 50 | 139 / 150 (93%) | 86 | **38%** | 57% |
+  | 200 | 283 / 300 (94%) | 163 | **42%** | 54% |
+  | 1000 | 295 / 300 (98%) | 117 | **60%** | 39% |
+
+  🚨 **The threshold is not the binding constraint; retrieval accuracy is.** Recall@1 never exceeds
+  **57%**, and it is a property of the embedding model, not the gate — **no threshold can promote a
+  note the model ranked second**. Raising the gate only converts wrong cues into silence: at 0.70 on
+  the full index, 132 questions fire, 85 correctly, so precision reaches 64% while recall falls to
+  28%.
+
+  🚨 **The self-authored positive set did not merely make the evidence weak — it hid this.** **V95**
+  and **V100** used five invented notes on five distinct topics, where picking the right one is
+  trivial, so "4 of 5 cues fired" measured *whether* it spoke and never *whether it was right*.
+  **V108** then strengthened the negatives and reported the positives as the remaining weak half. It
+  was worse than weak: it was concealing the defect.
+
+  **What this does and does not disturb.** `docs/decisions/0014`'s move from 0.65 to 0.45 is
+  untouched — at 0.65 the slot fired on nothing at all, and every row above still fires more
+  correct cues at 0.45 than at 0.65. What is now in question is the **slot's value**, on precision
+  grounds that are independent of the threshold: a teleprompter that shows the speaker a pre-written
+  note answering a *different* question, four times in ten, is a different proposition from one that
+  simply stays quiet.
+
+  ⚠️ **Written questions, not speech, and this remains the open gap.** DRCD questions are written,
+  punctuated and monolingual; the live path receives unpunctuated code-switched fragments with a
+  median of 12 characters (**the ASCEND measurement in `STATE.md`**). Real spoken queries are likely
+  to retrieve *worse*, not better, so **40% should be read as optimistic**.
+
+  ⚠️ **The 10-note row rests on 30 questions**, which is all DRCD offers for ten paragraphs. Treat it
+  as indicative; the 50- and 200-note rows carry 150 and 300.
+
 - **V101 — Gated, the segmentation table can choose again, and it chooses what V66 already chose.**
   Measured 2026-08-20, `tools/measure_segmentation.py` run twice on the same fixture in the same
   session, one variable changed: `--gate`.
