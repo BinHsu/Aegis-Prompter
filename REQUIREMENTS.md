@@ -2835,6 +2835,52 @@ Verified with Command Line Tools `clang` only — **no Xcode required**.
   index: **0 of 5 cues fired, 0 of 5 false positives**. The shipped `SERVE_THRESHOLD` of 0.65 sitting
   above every attainable paraphrase score is therefore not a one-run artefact.
 
+- **V107 — V99's digits-versus-words hypothesis is refuted. The advisor declines *"How long…?"*
+  questions and answers everything else, and V99's 52% was an artefact of two cases.** Measured
+  2026-08-20 with `tools/probe_advisor.py`, 20 calls per case, 11 cases then 13.
+
+  **The hypothesis, refuted.** **V99** answered a numeral-valued question 20/20 and a word-valued one
+  1/20, and offered "it may answer numerals and decline words" as a hypothesis rather than a finding.
+  Four cases pairing the *same fact* in both forms say otherwise:
+
+  | Case | Answer form | Correct |
+  |---|---|---|
+  | `240 milliseconds` | digits | **20/20** |
+  | `a quarter of a second` | **words** | **20/20** |
+  | `7 engineers` | digits | **20/20** |
+  | `seven engineers` | **words** | **20/20** |
+
+  **The real cause, isolated one variable at a time.** The failing case differed from the passing
+  ones in two ways at once — a trailing clause unrelated to the question, and *"How long"* phrasing.
+  Separating them:
+
+  | Case | Trailing clause | Phrasing | Result |
+  |---|---|---|---|
+  | `duration-present` | present | *How long* | **17/20 missed** |
+  | `how-long-no-trailing-clause` | **removed** | *How long* | **20/20 missed** |
+  | `how-many-with-trailing-clause` | **present** | *How many* | **20/20 correct** |
+
+  **The trailing clause is irrelevant; the question form decides it.** Removing the clause made it
+  *worse* — a clean 20/20 miss — while keeping the clause and changing only the interrogative gave a
+  clean 20/20 answer. **The advisor is blind to duration questions**, a form a hearing uses
+  constantly: *how long did that take, how long was the delay, how long had you known*.
+
+  🚨 **V99's "52% of answerable questions" must not be quoted.** It came from two answerable cases,
+  one of them the pathological one, so the figure was one coin flip wide. Over eight answerable cases
+  the rate is **123 of 160 — 77%** — and **every one of the 37 misses is a "how long" question**. The
+  honest statement is not "it answers about half" but "it answers everything except one question
+  form, which it never answers".
+
+  ⚠️ **`docs/decisions/0014` cites the 52% in support of shipping the generative slot off, and that
+  supporting figure is wrong.** Corrected here. **The decision itself is not disturbed**, because it
+  rests on **V106** — the slot doubles ASR inference while answering — and that measurement is
+  untouched. A slot answering 77% while halving the transcript's speed fails the same test as one
+  answering 52%; the reason was never the hit rate.
+
+  ⚠️ **The fabrication and prose-decline rates move between runs of an identical design.** Three runs
+  of the same case: fabrication 3%, 1%, 3%; prose declines 14%, 11%, 11%; correct declines on the one
+  failing unanswerable case 3/20, 8/20, 8/20. **Quote these as single digits, not to a decimal.**
+
 - **V101 — Gated, the segmentation table can choose again, and it chooses what V66 already chose.**
   Measured 2026-08-20, `tools/measure_segmentation.py` run twice on the same fixture in the same
   session, one variable changed: `--gate`.

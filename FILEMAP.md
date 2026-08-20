@@ -1133,13 +1133,13 @@ Trial: does `NPU_LOCK` still have to exist? Protocol in `fixtures/asr/NPU_LOCK_T
 - `compare_content()` (L280)
 - `main()` (L303)
 
-### `tools/probe_advisor.py` — 199 lines
+### `tools/probe_advisor.py` — 231 lines
 
 Turn V94's "both failures are reachable" into a rate, unattended.
 
-- `wait_for_server()` (L79)
-- `classify()` (L93)
-- `main()` (L102)
+- `wait_for_server()` (L111)
+- `classify()` (L125)
+- `main()` (L134)
 
 ### `tools/probe_music.py` — 208 lines
 

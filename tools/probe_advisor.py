@@ -71,6 +71,38 @@ CASES = [
     ("filler", False,
      "Speaker (You): So that covers the migration plan.\n"
      "Participant: Thanks, that's helpful."),
+
+    # **V99's open hypothesis, made testable.** It answered a question whose answer was the numeral
+    # `11,000` 20/20 and one whose answer was the words "eighteen months" 1/20. Two shapes is not a
+    # pattern, so these four pair the SAME fact expressed as digits and as words. If the digit
+    # members are answered and the word members declined, the hypothesis holds; if both are
+    # answered, the earlier miss was about something else. Every one of these IS answerable, so a
+    # decline is a miss and not a safety behaviour.
+    ("answer-is-digits-latency", True,
+     "Speaker (You): Median response time after the change was 240 milliseconds.\n"
+     "Participant: What was the median response time after the change?"),
+    ("answer-is-words-latency", True,
+     "Speaker (You): Median response time after the change was a quarter of a second.\n"
+     "Participant: What was the median response time after the change?"),
+    ("answer-is-digits-team", True,
+     "Speaker (You): The team was 7 engineers for the whole programme.\n"
+     "Participant: How many engineers were on the team?"),
+    ("answer-is-words-team", True,
+     "Speaker (You): The team was seven engineers for the whole programme.\n"
+     "Participant: How many engineers were on the team?"),
+
+    # **Isolating why `duration-present` misses.** That case reproduces at 18-19 of 20 missed while
+    # every other answerable case passes 20/20, and its transcript differs from them in two ways at
+    # once: a trailing clause unrelated to the question ("and finished under budget"), and a
+    # "how long" question rather than "how many"/"what was". These two change one variable each.
+    # Trailing clause removed, phrasing kept:
+    ("how-long-no-trailing-clause", True,
+     "Speaker (You): The programme ran for eighteen months.\n"
+     "Participant: How long did the programme run?"),
+    # Trailing clause kept, phrasing changed:
+    ("how-many-with-trailing-clause", True,
+     "Speaker (You): The team was seven engineers and the programme finished under budget.\n"
+     "Participant: How many engineers were on the team?"),
 ]
 
 DIGIT = re.compile(r"\d")
