@@ -13,7 +13,7 @@ rather than trusting this file:
 python tools/gen_filemap.py
 ```
 
-**77 Python files.**
+**79 Python files.**
 
 ## `fixtures/asr/results/20260817-model-swap/`
 
@@ -190,9 +190,9 @@ Voice separation: which lines share a speaker, and a proposal for who they are.
 - `propose_titles()` (L366)
 - `render_table()` (L395)
 
-### `src/global_state.py` — 504 lines
+### `src/global_state.py` — 511 lines
 
-- `class GlobalState` (L33)
+- `class GlobalState` (L40)
   - `_init_once()`
   - `warm_up()`
   - `set_microphone()`
@@ -205,7 +205,7 @@ Voice separation: which lines share a speaker, and a proposal for who they are.
   - `_atexit_stop()`
   - `_publish_advice()`
   - `_local_rag_worker_loop()`
-- `get_global_state()` (L503)
+- `get_global_state()` (L510)
 
 ### `src/knowledge_store.py` — 207 lines
 
@@ -308,6 +308,14 @@ Decide whether a segment contains speech, before it costs a decode.
 - `has_speech()` (L92)
 - `settings_from()` (L116)
 - `is_live()` (L141)
+
+## `tests/`
+
+### `tests/conftest.py` — 23 lines
+
+Keep the suite out of the operator's private directories.
+
+*No top-level classes or functions.*
 
 ## `tests/unit/`
 
@@ -726,6 +734,13 @@ The post-meeting prompt: what an outside agent is told, and what it is warned ab
 - `test_the_relistened_variant_does_not_claim_material_is_unrecoverable()` (L320)
 - `test_both_variants_still_forbid_inventing_and_relabelling()` (L330)
 
+### `tests/unit/test_private_dirs_untouched.py` — 62 lines
+
+Nothing in the suite may write into the operator's private directories.
+
+- `_snapshot()` (L25)
+- `test_no_test_writes_into_the_real_private_directories()` (L36)
+
 ### `tests/unit/test_queue_wait_instrumentation.py` — 210 lines
 
 Queue dwell reporting, and the log-format contract it must not break.
@@ -740,27 +755,27 @@ Queue dwell reporting, and the log-format contract it must not break.
 - `test_lock_wait_is_measured_when_the_accelerator_is_already_held()` (L165)
 - `test_uncontended_call_reports_no_lock_wait()` (L201)
 
-### `tests/unit/test_rag_gate.py` — 257 lines
+### `tests/unit/test_rag_gate.py` — 275 lines
 
 Arming an advisor slot is a per-meeting choice — disarming it must actually stop it.
 
-- `GlobalState()` (L24)
-- `_run_worker_briefly()` (L39)
-- `_started()` (L50)
-- `test_disarming_retrieval_leaves_no_advisor_at_all()` (L65)
-- `test_the_worker_does_nothing_when_no_slot_is_armed()` (L78)
-- `test_an_armed_pipeline_receives_the_utterance_and_the_bounded_transcript()` (L88)
-- `test_only_the_participant_track_reaches_the_advisor()` (L106)
-- `test_published_advice_lands_in_the_slot_its_source_names()` (L119)
-- `_armed()` (L137)
-- `test_arming_retention_gives_each_track_its_own_file()` (L147)
-- `test_an_unarmed_session_passes_no_path_at_all()` (L165)
-- `test_arming_without_a_directory_records_nothing_and_says_so()` (L174)
-- `test_the_session_record_is_told_what_was_armed()` (L186)
-- `test_stopping_writes_the_outcome_including_dropped_blocks()` (L197)
-- `test_every_session_ends_with_a_post_meeting_prompt()` (L224)
-- `test_the_prompt_names_the_retained_audio_when_there_is_some()` (L236)
-- `test_the_prompt_says_so_when_nothing_was_kept()` (L250)
+- `GlobalState()` (L26)
+- `_run_worker_briefly()` (L41)
+- `_started()` (L52)
+- `test_disarming_retrieval_leaves_no_advisor_at_all()` (L83)
+- `test_the_worker_does_nothing_when_no_slot_is_armed()` (L96)
+- `test_an_armed_pipeline_receives_the_utterance_and_the_bounded_transcript()` (L106)
+- `test_only_the_participant_track_reaches_the_advisor()` (L124)
+- `test_published_advice_lands_in_the_slot_its_source_names()` (L137)
+- `_armed()` (L155)
+- `test_arming_retention_gives_each_track_its_own_file()` (L165)
+- `test_an_unarmed_session_passes_no_path_at_all()` (L183)
+- `test_arming_without_a_directory_records_nothing_and_says_so()` (L192)
+- `test_the_session_record_is_told_what_was_armed()` (L204)
+- `test_stopping_writes_the_outcome_including_dropped_blocks()` (L215)
+- `test_every_session_ends_with_a_post_meeting_prompt()` (L242)
+- `test_the_prompt_names_the_retained_audio_when_there_is_some()` (L254)
+- `test_the_prompt_says_so_when_nothing_was_kept()` (L268)
 
 ### `tests/unit/test_relisten.py` — 380 lines
 

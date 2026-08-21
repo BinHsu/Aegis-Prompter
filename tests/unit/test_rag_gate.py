@@ -9,6 +9,8 @@ PortAudio and MLX for nothing. They are not a substitute for running the audio p
 """
 import os
 import sys
+import shutil
+import tempfile
 import threading
 import time
 from unittest.mock import MagicMock
@@ -53,12 +55,28 @@ def _started(state, GlobalState, **arming):
     The arming gate is what this file tests, and it lives inside `start_recording` -- reaching
     it means getting past warm-up, the tap and two audio streams, none of which this machine's
     venv can supply.
+
+    **`start_session` is redirected, and this is not tidiness.** `start_recording` calls
+    `buffer.start_session(session_id, retention=...)` with no `history_dir`, so it defaulted to the
+    real one and **every run of this file wrote a session record into the operator's own meeting
+    history**. Found 2026-08-21 with 131 header-only files accumulated there. `AGENTS.md` forbids
+    tests touching `history/` and records this exact shape happening once before, when a test called
+    a delete helper with its default argument and that default was the real `.env`. The guard in
+    `test_no_test_writes_into_the_real_history` is what keeps it fixed.
     """
     state.is_warm = True
     state.transcriber_me = MagicMock()
     state.transcriber_other = None
     state._start_system_audio = lambda: None
-    state.start_recording(**arming)
+    real_start = state.buffer.start_session
+    scratch = tempfile.mkdtemp(prefix="ragtest-history-")
+    try:
+        state.buffer.start_session = lambda sid, history_dir="history", retention=None: real_start(
+            sid, history_dir=scratch, retention=retention)
+        state.start_recording(**arming)
+    finally:
+        state.buffer.start_session = real_start
+        shutil.rmtree(scratch, ignore_errors=True)
     return state
 
 

@@ -563,6 +563,30 @@ measuring something switched off. It waits for that decision to be revisited.
   so a failed download does not lose the operator's preferences. Any probe that drives the UI
   therefore **changes their configuration as a side effect** — one did, on 2026-08-20, arming
   retention and leaving two stray WAVs under the archive directory.
+- 🚨 **The suite was writing into the operator's private directories, and had been for a long time.**
+  Found 2026-08-21 by counting files rather than reading code. Two leaks, both fixed, both the same
+  shape — **a default argument that happened to be the production path**:
+
+  - `test_rag_gate.py` reached `start_recording`, which calls `buffer.start_session(session_id,
+    retention=...)` with no `history_dir`, so it defaulted to the real one. **131 header-only session
+    records had accumulated in `history/`**, one per test run.
+  - `global_state` builds a `logging.FileHandler` **at import time**, so every test importing it left
+    an engine log behind. **1268 files in `logs/`.**
+
+  `AGENTS.md` names both directories as the operator's and records the first breach of this rule — a
+  test calling a delete helper whose default argument was the real `.env`. **Neither breach was
+  catchable by review**: the calling code looks correct and says nothing about where it writes.
+  `tests/conftest.py` now redirects `AEGIS_LOG_DIR` before anything imports `global_state` (a handler
+  built during import cannot be redirected by a fixture that runs later), and
+  `tests/unit/test_private_dirs_untouched.py` runs the suite in a subprocess and **counts files
+  before and after** — verified in the failing direction, where it catches 7 created files.
+
+  ⚠️ **The accumulated files are still there and their removal is the operator's call.** 176 records
+  in `history/`, of which **147 are under 400 bytes and 131 are exactly 297** — the header-only
+  signature of a test run; 29 are larger and may be real sessions. Plus 1282 logs and 267 MB of
+  retained audio under the storage root from measurement runs. **Nothing was deleted**, because
+  telling a test artefact from a short real meeting would mean reading the operator's transcripts.
+
 - **`RETAIN_AUDIO` is not a setting.** The key is `ARCHIVE_AUDIO`. A report of "retention is off"
   was once made by reading the non-existent name, which returns empty for any spelling and is
   therefore evidence of nothing. Check names against `bootstrap.SETTINGS_FIELDS`.

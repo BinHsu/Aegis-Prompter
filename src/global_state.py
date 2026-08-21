@@ -12,8 +12,15 @@ from audio_devices import SYSTEM_DEFAULT_INPUT
 from transcriber import Transcriber, release_models
 
 # ===== Configure Global Logging =====
+# **The directory is overridable, and that is not a convenience.** This handler is created at
+# IMPORT time, so every process that imports this module leaves a file behind -- including every
+# test that touches it. Found 2026-08-21 by a guard that counts files: 1268 engine logs had
+# accumulated in the operator's `logs/`, which `AGENTS.md` names alongside `history/` as theirs to
+# read and nobody else's to fill. A test cannot redirect a handler that already exists, so the only
+# place a redirect can work is before this line runs -- hence an environment variable rather than a
+# parameter. Production leaves it unset.
 base_dir = os.path.dirname(os.path.dirname(__file__))
-log_dir = os.path.join(base_dir, "logs")
+log_dir = (os.environ.get("AEGIS_LOG_DIR") or "").strip() or os.path.join(base_dir, "logs")
 os.makedirs(log_dir, exist_ok=True)
 
 # Generate a unique timestamped log file per startup segment
