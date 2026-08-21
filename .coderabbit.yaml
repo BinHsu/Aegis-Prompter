@@ -44,8 +44,10 @@ reviews:
     # 211 commits were squashed into one. A single commit that large is hard for any reviewer,
     # human or otherwise; the filters below reduce noise and do not fix that.
     - "!fixtures/**"
-    # Dated handover files that name their own expiry and ask to be deleted once read.
-    - "!MORNING.md"
+    # Dated handover files that name their own expiry and ask to be deleted once read. MORNING.md
+    # was filtered here too until 2026-08-21, when it expired by its own terms and was deleted --
+    # a filter naming a file that does not exist is dead config, and this repo has already been
+    # bitten by references that point at nothing.
     - "!HANDOFF.md"
 
   path_instructions:

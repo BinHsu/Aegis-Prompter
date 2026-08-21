@@ -517,6 +517,18 @@ short. Anything struck through was on this list and is done; the `V*` entry carr
    a default silently changed what "verified" meant for a path that had just been verified, and
    nothing would have flagged that.
 
+#### A2. Deferred on purpose, with the condition that would reopen each
+
+**All eight items above are closed, so this section exists to stop that reading as "nothing is left".**
+Three options were examined, costed and **not taken**. Each is written with what would make it worth
+buying, so a later reader does not have to re-derive the reasoning or re-propose it as fresh.
+
+| Option | Cost | Reopens when |
+|---|---|---|
+| **A retrieval-trained encoder** — `intfloat/multilingual-e5-small`, MIT, ungated, **448 MB**, and byte-identical to the shipped model in size, dimension, depth and therefore latency (**V113**) | one `curl` download and a supply-chain judgement: the E5 group is Microsoft Research and several authors are at MSRA in Beijing, which is a different shape from the Qwen case **R50** rejected but not a clean US-only story | the real meeting says the retrieval slot is worth improving. **V114** measured the shipped encoder already right **85%** of the time at twenty distinct notes, so this buys little at the note count this product uses |
+| **Hybrid sparse-plus-dense retrieval** — Qdrant supports sparse vectors natively; dense embeddings blur exact tokens (a name, a figure, a case number) and lexical matching catches precisely those | code only, no new weights; adds work to a **0.3 ms** query (**V113**) so latency is not the issue | the same condition, and it targets the failure dense embeddings are specifically bad at — worth trying **before** the encoder swap if either is wanted |
+| **Mitigating the *"how long"* blind spot** (**V107**) | a prompt change and a re-measure | `docs/decisions/0014` is revisited. The generative slot ships **off** on **V106**'s 2.01x latency cost, so mitigating it now would be measuring something switched off |
+
 **Deliberately not on this list:** mitigating the *"how long"* blind spot (**V107**). The generative
 slot ships off (`docs/decisions/0014`) on **V106**'s 2.01x latency cost, so mitigating it would be
 measuring something switched off. It waits for that decision to be revisited.
