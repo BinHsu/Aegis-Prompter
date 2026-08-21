@@ -4,7 +4,7 @@ import logging
 import time
 
 import knowledge_store
-from advisors import SERVE_THRESHOLD, Retrieval
+from advisors import MAX_CUES, SERVE_THRESHOLD, Retrieval
 
 logger = logging.getLogger("LocalAdvisor")
 
@@ -158,10 +158,15 @@ class LocalAdvisor:
             # so the score comes back on the scale SERVE_THRESHOLD is expressed in. Qdrant
             # normalises stored vectors for a cosine collection, which is why this matches the
             # `dot / norms` the pickle-era advisor computed by hand.
+            # **`MAX_CUES`, not 1.** The store ranks every note for the same 0.3 ms either way
+            # (**V113**), and asking for one threw the ranking away: the right note is in the top
+            # three far more often than it is first -- gated recall rises from 57% to 75% at fifty
+            # notes purely by showing what was already computed (**V112**). Chosen by the operator
+            # 2026-08-21; see `docs/decisions/0016`.
             hits = self.client.query_points(
                 collection_name=knowledge_store.COLLECTION,
                 query=[float(value) for value in query_vec],
-                limit=1,
+                limit=MAX_CUES,
                 with_payload=True,
             ).points
         except Exception as exc:
@@ -183,10 +188,21 @@ class LocalAdvisor:
         logger.info(f"[LocalAdvisor] RAG Similarity {best_score:.2f} (Threshold: {SERVE_THRESHOLD}) calculated in {elapsed_ms:.1f}ms for: '{dialogue_chunk}'")
 
         hint = None
+        hints, scores = (), ()
         if best_score >= SERVE_THRESHOLD and best.id != self.last_matched_idx:
             # Repeat suppression is still a display decision, not a scoring one: the score is
             # returned either way, so a suppressed repeat no longer looks like a dead index.
+            # **It keys on the top hit only**, deliberately: suppressing each of three cues
+            # independently would let a stable second-place note reappear beside a changing first,
+            # which reads as the pane half-refreshing rather than as one answer being replaced.
             self.last_matched_idx = best.id
             hint = (best.payload or {}).get("text", "")
+            # Only cues that clear the gate on their own merit. Padding to three with a 0.2 match
+            # would put a note nobody asked for next to one that was actually found.
+            kept = [(float(h.score), (h.payload or {}).get("text", ""))
+                    for h in hits[:MAX_CUES] if float(h.score) >= SERVE_THRESHOLD]
+            kept = [(sc, text) for sc, text in kept if text]
+            hints = tuple(text for _sc, text in kept)
+            scores = tuple(sc for sc, _text in kept)
 
-        return Retrieval(ok=True, score=best_score, hint=hint)
+        return Retrieval(ok=True, score=best_score, hint=hint, hints=hints, scores=scores)

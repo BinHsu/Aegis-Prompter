@@ -554,3 +554,53 @@ def test_the_default_questions_include_something_that_should_be_declined():
     lines = [l for l in advisors.REHEARSAL_DEFAULT.splitlines() if l.strip()]
     assert len(lines) >= 3
     assert any("thank" in l.lower() or "helpful" in l.lower() for l in lines)
+
+
+# ===== Up to three cues in one slot (0016) =====
+
+def test_a_single_cue_reaches_the_slot_verbatim():
+    """One cue must look exactly as it did before 0016. A speaker reading a single pre-written
+    line should not be handed `**1.** (0.61)` decoration around it."""
+    retriever = _StubRetriever(Retrieval(ok=True, score=0.61, hint="the whole note",
+                                         hints=("the whole note",), scores=(0.61,)))
+    received, _done, on_advice = _collector()
+    pipeline = AdvisorPipeline(retriever=retriever, llm=None, on_advice=on_advice)
+    try:
+        pipeline.submit("a question")
+        assert [a.text for a in received] == ["the whole note"]
+    finally:
+        pipeline.shutdown()
+
+
+def test_three_cues_arrive_as_ONE_advice_numbered_and_strongest_first():
+    """**The defect this guards is why 0016 exists.** `advice_slots` holds one dict per source and
+    `set_advice` overwrites it (V24), so emitting one `Advice` per cue would leave the LOWEST
+    scoring cue on screen. Exactly one `Advice` must arrive, carrying all three in order."""
+    retriever = _StubRetriever(Retrieval(
+        ok=True, score=0.71, hint="top",
+        hints=("top", "middle", "bottom"), scores=(0.71, 0.58, 0.47)))
+    received, _done, on_advice = _collector()
+    pipeline = AdvisorPipeline(retriever=retriever, llm=None, on_advice=on_advice)
+    try:
+        pipeline.submit("a question")
+        assert len(received) == 1, "three emissions would overwrite the one slot V24 describes"
+        text = received[0].text
+        assert text.index("top") < text.index("middle") < text.index("bottom")
+        assert "0.71" in text and "0.58" in text and "0.47" in text
+        # The slot's own score is the best one, so the liveness line reads the strongest match.
+        assert received[0].score == 0.71
+    finally:
+        pipeline.shutdown()
+
+
+def test_a_cue_below_the_gate_is_never_padded_in():
+    """`local_advisor` filters on the gate before handing cues over, so the pipeline should never
+    see a sub-threshold cue -- but if it does, it must not invent a reason to show it."""
+    retriever = _StubRetriever(Retrieval(ok=True, score=0.0, hint=None, hints=(), scores=()))
+    received, _done, on_advice = _collector()
+    pipeline = AdvisorPipeline(retriever=retriever, llm=None, on_advice=on_advice)
+    try:
+        pipeline.submit("an off-topic remark")
+        assert received == []
+    finally:
+        pipeline.shutdown()

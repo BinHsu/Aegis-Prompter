@@ -25,7 +25,7 @@ How much does release_models() actually free for the new backend, and does the p
 
 ## `src/`
 
-### `src/advisors.py` — 514 lines
+### `src/advisors.py` — 527 lines
 
 Advisor backends: retrieval, generation, and the routing between them.
 
@@ -49,7 +49,7 @@ Advisor backends: retrieval, generation, and the routing between them.
   - `_emit()`
   - `shutdown()`
   - `status()`
-- `build_advisor()` (L480)
+- `build_advisor()` (L493)
 
 ### `src/app.py` — 1415 lines
 
@@ -219,7 +219,7 @@ The knowledge index, in Qdrant. One API for the local collection and a remote on
 - `status()` (L168)
 - `_close()` (L202)
 
-### `src/local_advisor.py` — 192 lines
+### `src/local_advisor.py` — 208 lines
 
 - `is_worth_embedding()` (L30)
 - `class LocalAdvisor` (L42)
@@ -311,7 +311,7 @@ Decide whether a segment contains speech, before it costs a decode.
 
 ## `tests/unit/`
 
-### `tests/unit/test_advisor.py` — 252 lines
+### `tests/unit/test_advisor.py` — 270 lines
 
 The retrieval backend: what it scores, what it serves, and what it says when it cannot.
 
@@ -333,8 +333,10 @@ The retrieval backend: what it scores, what it serves, and what it says when it 
 - `test_genuine_filler_is_still_dropped_in_both_scripts()` (L236)
 - `test_latin_behaviour_is_unchanged()` (L241)
 - `test_the_weighting_is_declared_a_heuristic_not_a_measurement()` (L247)
+- `test_the_cue_cap_is_three_and_is_the_number_the_operator_chose()` (L257)
+- `test_retrieval_defaults_keep_every_existing_reader_working()` (L264)
 
-### `tests/unit/test_advisor_backends.py` — 556 lines
+### `tests/unit/test_advisor_backends.py` — 606 lines
 
 Fanning an utterance out to the two advisor slots, and the transport to the generative one.
 
@@ -378,6 +380,9 @@ Fanning an utterance out to the two advisor slots, and the transport to the gene
 - `test_blank_lines_are_not_sent()` (L537)
 - `test_no_questions_is_no_calls()` (L546)
 - `test_the_default_questions_include_something_that_should_be_declined()` (L552)
+- `test_a_single_cue_reaches_the_slot_verbatim()` (L561)
+- `test_three_cues_arrive_as_ONE_advice_numbered_and_strongest_first()` (L575)
+- `test_a_cue_below_the_gate_is_never_padded_in()` (L596)
 
 ### `tests/unit/test_analyze_soak_contention.py` — 116 lines
 
@@ -933,13 +938,13 @@ Build a two-track conversation fixture with an exact reference timeline.
 - `build()` (L90)
 - `main()` (L210)
 
-### `tools/check_state.py` — 136 lines
+### `tools/check_state.py` — 160 lines
 
 Checks that the requirement documents still hold together.
 
-- `read()` (L41)
-- `decision_records()` (L46)
-- `main()` (L55)
+- `read()` (L49)
+- `decision_records()` (L54)
+- `main()` (L63)
 
 ### `tools/derive_hallucination_list.py` — 119 lines
 

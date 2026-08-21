@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Changed
+- **Up to three pre-written cues instead of one.** The knowledge lookup always ranked every note and
+  the app only ever showed the first, which threw away most of what it had found: measured, the right
+  note is in the top three far more often than it is first. Now up to three appear, strongest first,
+  each with its match score, and only if each one clears the bar on its own — nothing is padded in to
+  fill the space. In practice it usually still shows one: across sixty questions against twenty notes,
+  two thirds of the time a single cue appeared. Costs nothing in speed; the lookup takes about five
+  milliseconds either way. See `docs/decisions/0016`.
 - **Pre-written cues now actually appear.** The similarity score a retrieved note has to clear before
   it is shown moved from 0.65 to 0.45. At 0.65, measured against real embeddings, **not one
   paraphrased question ever cleared it** — five rephrasings of indexed notes scored 0.37 to 0.63 —

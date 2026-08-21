@@ -364,12 +364,25 @@ class AdvisorPipeline:
         transcript = transcript if transcript is not None else utterance
         retrieval = self._retrieve(utterance)
 
-        # One `Advice` per cue, each labelled with its own score, so the speaker can see which is
-        # the strong match rather than being handed a merged block with a single number on it.
-        for text, score in zip(retrieval.hints or ([retrieval.hint] if retrieval.hint else []),
-                               retrieval.scores or ((retrieval.score,) if retrieval.hint else ())):
+        # **One `Advice`, carrying up to `MAX_CUES` cues in its text.** The first draft emitted one
+        # `Advice` per cue, which was a latent defect: `dialogue_buffer.advice_slots` holds a single
+        # dict per source and `set_advice` overwrites it (**V24**), so three emissions would have
+        # left the LOWEST-scoring cue on screen and written all three to the session log. Joining
+        # here keeps the one-slot design **V24** describes intact and puts the ranking in front of
+        # the speaker, strongest first, each with its own score.
+        cues = list(retrieval.hints) if retrieval.hints else (
+            [retrieval.hint] if retrieval.hint else [])
+        scores = list(retrieval.scores) if retrieval.scores else (
+            [retrieval.score] if retrieval.hint else [])
+        if cues:
+            if len(cues) == 1:
+                text = cues[0]
+            else:
+                text = "\n\n".join(
+                    f"**{i}.** ({score:.2f})  {cue}" if score is not None else f"**{i}.**  {cue}"
+                    for i, (cue, score) in enumerate(zip(cues, scores), 1))
             self._emit(Advice(source=SOURCE_RETRIEVED, text=text,
-                              vendor="knowledge index", score=score))
+                              vendor="knowledge index", score=scores[0] if scores else None))
 
         if self.llm is None:
             return retrieval

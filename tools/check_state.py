@@ -12,6 +12,7 @@ Uses only the standard library, so it runs without the project venv.
     python tools/check_state.py        # exit 1 on any violation
 """
 
+import glob
 import os
 import re
 import sys
@@ -33,6 +34,13 @@ CITATION = re.compile(r"\b([RV]\d+)\b")
 # narrow: a preceding sign or tilde marks a quantity, and a following unit does the same. Anything
 # that still matches is a bare `7.5` in prose, which is what a plan citation looks like.
 _UNITS = r"(?:(?:s|ms|x|MB|GB|KB|MiB|GiB|dB|dBFS|Hz|kHz|min|h)\b|%)"
+# A reference to a decision record that does not exist. This guard exists because two such
+# references sat in `src/advisors.py` for an afternoon -- `docs/decisions/0016` was cited in code
+# comments before the file was written, and the build stayed green because only R*/V* citations were
+# ever validated. A citation that points at nothing is worse than no citation: it tells a reader the
+# reasoning was recorded somewhere.
+DECISION_REF = re.compile(r"docs/decisions/(\d{4})")
+
 PLAN_NUMBER = re.compile(
     r"(?<![\d+\-~=])7\.\d(?![\d.])(?!\s*" + _UNITS + r")"
 )
@@ -113,6 +121,22 @@ def main():
             failures.append(f"docs/decisions/{name} cites no R*/V*")
         if "**Status:**" not in text:
             failures.append(f"docs/decisions/{name} has no Status line")
+
+    # Every `docs/decisions/NNNN` reference, wherever it appears, must resolve to a file. Scanned
+    # across source and the requirement documents, because the dangling pair that motivated this
+    # lived in `src/advisors.py` comments and nothing looked at those.
+    existing = {name[:4] for name, _text in decision_records()}
+    for path in sorted(glob.glob(os.path.join(REPO_ROOT, "src", "*.py"))
+                       + glob.glob(os.path.join(REPO_ROOT, "tools", "*.py"))
+                       + [os.path.join(REPO_ROOT, "REQUIREMENTS.md"), os.path.join(REPO_ROOT, "STATE.md")]):
+        try:
+            body = read(path)
+        except OSError:
+            continue
+        for number in sorted(set(DECISION_REF.findall(body))):
+            if number not in existing:
+                failures.append(f"{os.path.relpath(path, REPO_ROOT)} cites docs/decisions/{number}, "
+                                f"which does not exist")
 
     if failures:
         print("FAIL: requirement documents are inconsistent")

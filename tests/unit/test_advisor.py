@@ -250,3 +250,21 @@ def test_the_weighting_is_declared_a_heuristic_not_a_measurement():
     import inspect
     source = inspect.getsource(la)
     assert "heuristic, not a measurement" in source
+
+
+# ===== Up to three cues, and the invariants that keep them honest (0016) =====
+
+def test_the_cue_cap_is_three_and_is_the_number_the_operator_chose():
+    """`MAX_CUES` is a product decision (0016), not a tuning constant. Pinned so a change has to
+    confront the record: gated recall gains only ~3 points from three to five while the reading
+    roughly doubles, and the cost of more cues is entirely R9."""
+    assert advisors.MAX_CUES == 3
+
+
+def test_retrieval_defaults_keep_every_existing_reader_working():
+    """`hints`/`scores` were added beside `hint`, not instead of it. A `Retrieval` built the old
+    way must still be valid, or every caller and test predating 0016 breaks."""
+    old_style = advisors.Retrieval(ok=True, score=0.7, hint="a note")
+    assert old_style.hints == ()
+    assert old_style.scores == ()
+    assert old_style.hint == "a note"
