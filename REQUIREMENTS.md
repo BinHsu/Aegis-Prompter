@@ -3067,6 +3067,38 @@ Verified with Command Line Tools `clang` only — **no Xcode required**.
   ⚠️ **The 10-note row rests on 30 questions**, which is all DRCD offers for ten paragraphs. Treat it
   as indicative; the 50- and 200-note rows carry 150 and 300.
 
+- **V112 — The right note is near the top, not lost: recall@3 is 84% where recall@1 is 58%.** Measured
+  2026-08-21, same DRCD corpus and probe as **V111**, asking the store for ten points instead of one.
+
+  | Notes | recall@1 | **recall@3** | recall@5 | recall@10 |
+  |---|---|---|---|---|
+  | 50 | 58.0% | **84.0%** | 89.3% | 96.7% |
+  | 200 | 55.3% | **72.3%** | 76.7% | 88.3% |
+
+  **So V111's 40%-wrong is largely a display decision, not a retrieval failure.** `local_advisor`
+  queries with `limit=1` and shows that one point. **Showing three recovers 62% of the misses at 50
+  notes and 38% at 200** — with no new model, no new dependency, and no extra latency, because the
+  query already ranks every note and the product discards positions two and three.
+
+  **Two fixes exist and they compose.**
+
+  1. **Show more than one cue.** Free in compute, and the whole cost lands on **R9** — a teleprompter
+     showing three short candidates asks the speaker to scan rather than read. That is a product
+     judgement about attention, not a measurement, and it is the operator's.
+  2. **A retrieval-trained embedding model.** `paraphrase-multilingual-MiniLM-L12-v2` is trained for
+     *similarity*, not retrieval, which is a genuine mismatch with how it is used here. Models trained
+     for retrieval exist and would raise recall@1 itself rather than working around it. Cost: a larger
+     model to download and hold, and slower CPU embedding on every Participant utterance — so it needs
+     measuring against **R9**, not assuming. **Not attempted: it is a new download and therefore the
+     operator's call.**
+
+  ⚠️ **Neither reaches 100%, and the ceiling is visible here.** At 200 notes even recall@10 is 88.3%,
+  so one question in eight has its answer outside the top ten. Showing more cues cannot fix that
+  remainder; only a better retriever can.
+
+  ⚠️ **Still written questions.** As in **V111**, real speech is unpunctuated and code-switched, so
+  every figure here should be read as optimistic.
+
 - **V101 — Gated, the segmentation table can choose again, and it chooses what V66 already chose.**
   Measured 2026-08-20, `tools/measure_segmentation.py` run twice on the same fixture in the same
   session, one variable changed: `--gate`.

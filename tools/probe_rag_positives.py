@@ -74,6 +74,8 @@ def main():
                              "picking one paragraph correctly out of 1000 is a far harder task than "
                              "out of 20, and conflating the two would make the mechanism look worse "
                              "than the product's own conditions warrant. 0 indexes everything.")
+    parser.add_argument("--topk", action="store_true",
+                        help="Report recall@1/3/5/10 instead of the firing table.")
     parser.add_argument("--out", default="")
     args = parser.parse_args()
 
@@ -122,6 +124,32 @@ def main():
         advisor = local_advisor.LocalAdvisor(settings)
         if advisor.load_error:
             sys.exit(f"probe index did not load: {advisor.load_error}")
+
+        # **Is the right note near the top, or genuinely lost?** `analyze_dialogue` asks for one
+        # point because that is what the product shows. If recall@3 or @5 is far above recall@1, the
+        # ranking is nearly right and displaying a small number of candidates converts "wrong note"
+        # into "right note among three" -- a change with no new model and no extra latency. If the
+        # curve is flat, the embedding model itself is the lever. Measured before recommending either.
+        if args.topk:
+            import knowledge_store as ks
+            hits_at = {k: 0 for k in (1, 3, 5, 10)}
+            for question, want in sample:
+                vec = advisor.model.encode([question], convert_to_numpy=True)[0]
+                points = advisor.client.query_points(
+                    collection_name=ks.COLLECTION, query=[float(v) for v in vec],
+                    limit=10, with_payload=True).points
+                texts = [(pt.payload or {}).get("text", "") for pt in points]
+                for k in hits_at:
+                    if any(t.strip() == paragraphs[want].strip() for t in texts[:k]):
+                        hits_at[k] += 1
+            n = len(sample)
+            print(f"===== recall@k over {len(paragraphs)} notes, {n} questions =====")
+            for k in (1, 3, 5, 10):
+                print(f"    recall@{k:<3} {hits_at[k]:>4}/{n}  ({100*hits_at[k]/n:.1f}%)")
+            gain = hits_at[3] - hits_at[1]
+            print(f"    showing three instead of one would recover {gain} of the "
+                  f"{n - hits_at[1]} misses ({100*gain/max(n - hits_at[1],1):.0f}% of them)")
+            return 0
 
         rows = []
         for question, want in sample:
