@@ -3026,8 +3026,10 @@ Verified with Command Line Tools `clang` only — **no Xcode required**.
   report — **a missing track is not a zero**. Ninth instance in this work of a pattern that cannot
   match what it is looking for.
 
-- **V111 — When the retrieval slot speaks, it names the wrong note about 40% of the time, and no
-  threshold can fix that.** Measured 2026-08-21 with `tools/probe_rag_positives.py` against **DRCD**
+- **V111 — When the retrieval slot speaks over a large corpus of near-duplicate paragraphs, it names
+  the wrong note about 40% of the time, and no threshold can fix that.** ⚠️ **The headline of this
+  entry was narrowed by V114 the same day: on a prepared set of twenty distinct notes the error is
+  8.9%, not 40%. Read V114 before quoting anything here.** Measured 2026-08-21 with `tools/probe_rag_positives.py` against **DRCD**
   (台達閱讀理解資料集, Traditional Chinese from Wikipedia, CC BY-SA 3.0, Delta Electronics, Taiwan):
   1000 paragraphs, 3524 questions, each question attached by the dataset to the paragraph that answers
   it. **Questions, notes and pairing are all DRCD's** — the first time the positive half of this
@@ -3128,6 +3130,47 @@ Verified with Command Line Tools `clang` only — **no Xcode required**.
   magnitude worse is still inaudible. **The binding constraints in this slot are correctness
   (V111) and attention (R9), not speed** — which is the opposite of the generative slot, where
   **V106** made latency the disqualifier.
+
+- **V114 — V111's "wrong 40% of the time" was an artefact of corpus shape. With a prepared set of
+  distinct notes the slot is right 85% of the time at twenty notes.** Measured 2026-08-21 after the
+  operator objected that a hand-prepared note set has little duplication — a real objection to the
+  measurement, and it holds.
+
+  **The objection, and why it bites.** DRCD draws 1000 paragraphs from **383 Wikipedia articles**, so
+  about 2.6 paragraphs share an article and read as near-duplicates of each other. A prepared briefing
+  set is the opposite: one note per matter. **Attributing every wrong hit: 48% of them came from the
+  same article as the correct answer** — confusion between neighbours, not failure to understand the
+  question.
+
+  | Index | Right | **Wrong, as a share of fires** |
+  |---|---|---|
+  | **20 distinct notes** | **85.0%** | **8.9%** |
+  | 50 distinct notes | 71.3% | 23.8% |
+  | 200 distinct notes | 60.0% | 36.6% |
+  | 200 as-is, with near-neighbours (**V111**) | 54.3% | 42.4% |
+  | 1000 as-is (**V111**'s headline) | 39.0% | 60.3% |
+
+  🚨 **V111's headline should not be quoted for this product.** It measured a thousand mutually
+  confusable Wikipedia paragraphs; the operator's index holds **four chunks**, and a generous
+  prepared set is tens. At twenty distinct notes the slot names the wrong note on **fewer than one
+  cue in ten**, which is a different proposition from four in ten and would have supported a different
+  decision.
+
+  **Two separate effects, and separating them is the finding.** Removing same-article neighbours at
+  200 notes moved the right-rate only from 54.3% to 60.0%, even though 48% of wrong hits had been
+  same-article — because the wrong hits **redistribute** to other articles (62 to 104) rather than
+  becoming correct. So corpus shape and index size are both real and neither explains the other:
+  **shape dominates at small indexes, size dominates at large ones.**
+
+  ⚠️ **Still written questions**, as in **V111** and **V112** — real speech is unpunctuated and
+  code-switched, so these remain optimistic. And the 20-note row rests on the 60 questions DRCD offers
+  for twenty articles.
+
+  **What this does to the fixes.** Showing three cues (`docs/decisions/0016`) is still worth having —
+  it converts the residual misses at any index size. The **retrieval-trained model** and **hybrid
+  sparse-plus-dense** become much less urgent: at the note count this product actually uses, the
+  shipped encoder is already right 85% of the time. **Neither should be bought before the real meeting
+  says the slot is worth improving at all.**
 
 - **V101 — Gated, the segmentation table can choose again, and it chooses what V66 already chose.**
   Measured 2026-08-20, `tools/measure_segmentation.py` run twice on the same fixture in the same

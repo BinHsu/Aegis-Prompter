@@ -25,23 +25,23 @@ How much does release_models() actually free for the new backend, and does the p
 
 ## `src/`
 
-### `src/advisors.py` — 496 lines
+### `src/advisors.py` — 514 lines
 
 Advisor backends: retrieval, generation, and the routing between them.
 
-- `class Retrieval` (L92)
-- `class Advice` (L107)
-- `class AdvisorBackend` (L116)
+- `class Retrieval` (L100)
+- `class Advice` (L122)
+- `class AdvisorBackend` (L131)
   - `analyze_dialogue()`
-- `chat_endpoint()` (L136)
-- `class LlmAdvisor` (L153)
+- `chat_endpoint()` (L151)
+- `class LlmAdvisor` (L168)
   - `_post()`
   - `complete()`
-- `rehearse()` (L221)
-- `build_messages()` (L251)
-- `is_pass()` (L264)
-- `class _Liveness` (L273)
-- `class AdvisorPipeline` (L290)
+- `rehearse()` (L236)
+- `build_messages()` (L266)
+- `is_pass()` (L279)
+- `class _Liveness` (L288)
+- `class AdvisorPipeline` (L305)
   - `submit()`
   - `_retrieve()`
   - `_llm_loop()`
@@ -49,7 +49,7 @@ Advisor backends: retrieval, generation, and the routing between them.
   - `_emit()`
   - `shutdown()`
   - `status()`
-- `build_advisor()` (L462)
+- `build_advisor()` (L480)
 
 ### `src/app.py` — 1415 lines
 
@@ -1169,12 +1169,12 @@ Does a retrieval cue fire when it should, and stay quiet when it should not?
 - `build_temp_index()` (L115)
 - `main()` (L137)
 
-### `tools/probe_rag_positives.py` — 194 lines
+### `tools/probe_rag_positives.py` — 283 lines
 
 The positive half of the retrieval threshold, on questions nobody here wrote.
 
 - `load_corpus()` (L48)
-- `main()` (L65)
+- `main()` (L79)
 
 ### `tools/probe_ui_flow.py` — 226 lines
 

@@ -45,21 +45,35 @@ CORPUS = os.path.join(REPO, ".corpora-qa", "DRCD_dev.json")
 URL = "https://raw.githubusercontent.com/DRCKnowledgeTeam/DRCD/master/DRCD_dev.json"
 
 
-def load_corpus():
-    """`(paragraphs, [(question, paragraph_index)])`, or exit with the fetch command."""
+def load_corpus(one_per_article=False):
+    """`(paragraphs, [(question, index)], article_of_index)`, or exit with the fetch command.
+
+    **`one_per_article` exists because of a real objection to the measurement.** DRCD holds 1000
+    paragraphs drawn from 383 Wikipedia articles, so about 2.6 paragraphs share an article and are
+    highly confusable with each other. A hand-prepared briefing set is the opposite: the operator
+    writes one note per matter, and near-duplicate notes are unlikely. Keeping one paragraph per
+    article approximates that, and the difference between the two runs is how much of the measured
+    error was an artefact of the corpus rather than a property of the product's conditions.
+    """
     if not os.path.exists(CORPUS):
         sys.exit(f"corpus missing. Fetch it with curl -- huggingface_hub cannot reach the network on\n"
                  f"this machine (V93):\n  mkdir -p {os.path.dirname(CORPUS)}\n"
                  f"  curl -sSL -o {CORPUS} {URL}")
     data = json.load(open(CORPUS, encoding="utf-8"))
-    paragraphs, pairs = [], []
-    for article in data["data"]:
+    paragraphs, pairs, article_of = [], [], []
+    for art_i, article in enumerate(data["data"]):
         for para in article["paragraphs"]:
             index = len(paragraphs)
             paragraphs.append(para["context"])
+            article_of.append(art_i)
             for qa in para["qas"]:
                 pairs.append((qa["question"], index))
-    return paragraphs, pairs
+            if one_per_article:
+                break
+    if one_per_article:
+        keep = {i for i in range(len(paragraphs))}
+        pairs = [(q, i) for q, i in pairs if i in keep]
+    return paragraphs, pairs, article_of
 
 
 def main():
@@ -74,12 +88,15 @@ def main():
                              "picking one paragraph correctly out of 1000 is a far harder task than "
                              "out of 20, and conflating the two would make the mechanism look worse "
                              "than the product's own conditions warrant. 0 indexes everything.")
+    parser.add_argument("--one-per-article", action="store_true",
+                        help="Index one paragraph per Wikipedia article, approximating a set of "
+                             "distinct hand-written notes rather than near-neighbour paragraphs.")
     parser.add_argument("--topk", action="store_true",
                         help="Report recall@1/3/5/10 instead of the firing table.")
     parser.add_argument("--out", default="")
     args = parser.parse_args()
 
-    paragraphs, pairs = load_corpus()
+    paragraphs, pairs, article_of = load_corpus(one_per_article=args.one_per_article)
     if args.notes and args.notes < len(paragraphs):
         # Keep only questions whose own paragraph survives, so every sampled question still has a
         # correct answer present. Dropping that invariant would turn recall into a different metric
@@ -186,8 +203,28 @@ def main():
             # `hint` carries the matched chunk's text, which is how we learn WHICH note won.
             hit = (verdict.hint or "")
             correct = bool(hit) and hit.strip() == paragraphs[want].strip()
+            hit_index = None
+            if hit:
+                for i, text in enumerate(paragraphs):
+                    if text.strip() == hit.strip():
+                        hit_index = i
+                        break
             rows.append({"q": question, "score": verdict.score, "correct": correct,
-                         "fired": bool(verdict.hint), "want": want})
+                         "fired": bool(verdict.hint), "want": want, "hit_index": hit_index})
+
+        same_article = other_article = 0
+        for r in rows:
+            if r.get("fired") and r.get("correct") is False and r.get("hit_index") is not None:
+                if article_of[r["hit_index"]] == article_of[r["want"]]:
+                    same_article += 1
+                else:
+                    other_article += 1
+        if same_article or other_article:
+            total_wrong = same_article + other_article
+            print(f"  wrong hits by origin: {same_article} from the SAME article as the right answer"
+                  f" ({100*same_article/total_wrong:.0f}%), {other_article} from a different one")
+            print(f"    -- same-article confusions are a property of Wikipedia paragraphs, not of a")
+            print(f"       prepared note set where each note covers a different matter")
 
         scored = [r for r in rows if r["score"] is not None]
         fired = [r for r in scored if r["fired"]]
