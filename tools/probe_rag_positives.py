@@ -144,6 +144,30 @@ def main():
                         hits_at[k] += 1
             n = len(sample)
             print(f"===== recall@k over {len(paragraphs)} notes, {n} questions =====")
+            # **Gated recall is the number the product would actually deliver.** recall@k above
+            # counts the right note being in the top k at ANY score; the shipped path only shows a
+            # point that clears SERVE_THRESHOLD. If the recovered hits sit below the gate, showing
+            # three changes nothing -- so this is measured before the display is changed, not after.
+            from advisors import SERVE_THRESHOLD as THR
+            gated = {k: 0 for k in (1, 3, 5)}
+            shown = {k: 0 for k in (1, 3, 5)}
+            for question, want in sample:
+                vec = advisor.model.encode([question], convert_to_numpy=True)[0]
+                points = advisor.client.query_points(
+                    collection_name=ks.COLLECTION, query=[float(v) for v in vec],
+                    limit=5, with_payload=True).points
+                keep = [pt for pt in points if float(pt.score) >= THR]
+                for k in gated:
+                    top = keep[:k]
+                    shown[k] += len(top)
+                    if any((pt.payload or {}).get("text", "").strip()
+                           == paragraphs[want].strip() for pt in top):
+                        gated[k] += 1
+            print(f"  --- gated at {THR}, which is what the product would show ---")
+            for k in (1, 3, 5):
+                print(f"    right note among the shown {k:<2} {gated[k]:>4}/{n}"
+                      f"  ({100*gated[k]/n:.1f}%)   cues displayed per question avg "
+                      f"{shown[k]/n:.2f}")
             for k in (1, 3, 5, 10):
                 print(f"    recall@{k:<3} {hits_at[k]:>4}/{n}  ({100*hits_at[k]/n:.1f}%)")
             gain = hits_at[3] - hits_at[1]

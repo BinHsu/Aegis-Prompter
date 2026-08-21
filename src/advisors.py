@@ -32,6 +32,14 @@ SOURCE_GENERATED = "generated"
 SOURCE_OVERRIDE = "override"
 ADVICE_SOURCES = (SOURCE_OVERRIDE, SOURCE_RETRIEVED, SOURCE_GENERATED)
 
+# How many retrieved cues may be shown at once. **Three, chosen by the operator 2026-08-21** on the
+# measurement in **V112**: the right note is in the top three far more often than it is first, and
+# the query already computed the ranking. Above three the cost is **R9** -- a speaker scanning a
+# list is not reading a line -- and gated recall gains only 3 points from three to five (75.3% to
+# 78.7% at fifty notes) while the average number of cues on screen rises to three. See
+# `docs/decisions/0016`.
+MAX_CUES = 3
+
 # ===== The retrieval gate, and the absence of any other =====
 #
 # This answers one question -- "is this retrieved chunk about what was just said at all" -- and
@@ -101,6 +109,13 @@ class Retrieval:
     score: float = None
     hint: str = None
     error: str = ""
+    # **Up to three cues, not one** (`docs/decisions/0016`). `hint` stays the top-ranked one so
+    # every existing reader keeps working; `hints` carries the full set that cleared the gate, top
+    # first, and `scores` runs parallel to it. Measured reason: the store already ranks every note
+    # and the product was asking for one -- gated recall of the right note rises from 57% to 75% at
+    # fifty notes purely by showing what was already computed (**V112**).
+    hints: tuple = ()
+    scores: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -349,9 +364,12 @@ class AdvisorPipeline:
         transcript = transcript if transcript is not None else utterance
         retrieval = self._retrieve(utterance)
 
-        if retrieval.hint:
-            self._emit(Advice(source=SOURCE_RETRIEVED, text=retrieval.hint,
-                              vendor="knowledge index", score=retrieval.score))
+        # One `Advice` per cue, each labelled with its own score, so the speaker can see which is
+        # the strong match rather than being handed a merged block with a single number on it.
+        for text, score in zip(retrieval.hints or ([retrieval.hint] if retrieval.hint else []),
+                               retrieval.scores or ((retrieval.score,) if retrieval.hint else ())):
+            self._emit(Advice(source=SOURCE_RETRIEVED, text=text,
+                              vendor="knowledge index", score=score))
 
         if self.llm is None:
             return retrieval

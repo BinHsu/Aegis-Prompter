@@ -3099,6 +3099,36 @@ Verified with Command Line Tools `clang` only — **no Xcode required**.
   ⚠️ **Still written questions.** As in **V111**, real speech is unpunctuated and code-switched, so
   every figure here should be read as optimistic.
 
+- **V113 — Retrieval costs 5-6 ms end to end and the vector store is 0.3 ms of it. Speed is not a
+  constraint anywhere in this slot.** Measured 2026-08-21 over 120 DRCD questions per index size,
+  timing `encode` and `query_points` separately through `local_advisor`'s own model and client.
+
+  | Index size | Encode | **Qdrant query** | Total |
+  |---|---|---|---|
+  | 4 notes — the operator's real index | 4.9 ms | **0.25 ms** | **5.2 ms** |
+  | 50 | 5.1 ms | 0.28 ms | 5.4 ms |
+  | 200 | 4.8 ms | 0.29 ms | 5.1 ms |
+  | 1000 | 5.6 ms | 0.55 ms | **6.1 ms** |
+
+  **It is flat in index size**, because Qdrant does exact search below its indexing threshold and the
+  cost is dominated by embedding one short utterance. Against the rest of the live path — voice gate
+  **32 ms** (**V83**), Whisper median **650 ms** (**V97**), an LLM call **116-431 ms** which also
+  doubles Whisper (**V94**, **V106**) — retrieval is **about 1% of transcription** and a fifth of the
+  gate. `advisors.py` claimed "~10 ms and local, measured"; it is better than that.
+
+  **The store is not the cost, and it is not the quality either.** 0.25-0.55 ms of the total is
+  Qdrant; the remaining ~5 ms is the embedding model. Since **V111** showed retrieval *accuracy* is a
+  property of that same model, the database is neither the bottleneck nor the lever — swapping it
+  would change nothing in either dimension.
+
+  **Consequence for the three fixes in V112 and after: none of them is constrained by latency.**
+  `intfloat/multilingual-e5-small` is byte-identical in size, dimension and depth to the shipped
+  model, so its encode cost should land at the same ~5 ms — its only real costs are the download and
+  the provenance judgement. Hybrid sparse-plus-dense adds work to a 0.3 ms query, so even an order of
+  magnitude worse is still inaudible. **The binding constraints in this slot are correctness
+  (V111) and attention (R9), not speed** — which is the opposite of the generative slot, where
+  **V106** made latency the disqualifier.
+
 - **V101 — Gated, the segmentation table can choose again, and it chooses what V66 already chose.**
   Measured 2026-08-20, `tools/measure_segmentation.py` run twice on the same fixture in the same
   session, one variable changed: `--gate`.
