@@ -1,5 +1,18 @@
 {
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "c=$(jq -r '.tool_input.command // empty'); printf '%s %s\\n' \"$(date -u +%FT%TZ)\" \"$(printf '%s' \"$c\" | head -c 120)\" >> \"${CLAUDE_PROJECT_DIR:-$PWD}/.claude/bash-guard.log\"; if printf '%s' \"$c\" | grep -Eq '(^|[;&|(]|[[:space:]])(sudo[[:space:]]+)?(pkill|killall|kill)([[:space:]]|$)'; then echo 'Blocked: stop a run with TaskStop and its task id, not kill/pkill/killall. A pattern match can hit a process that is not yours; a task id is exact. If TaskStop cannot reach the thing you want to stop, the mistake was upstream -- you chained several runs into one background task. Launch one task per run instead.' >&2; exit 2; fi; exit 0",
+            "statusMessage": "Checking for kill/pkill",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Edit|Write|MultiEdit",

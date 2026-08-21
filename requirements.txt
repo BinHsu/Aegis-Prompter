@@ -1,7 +1,19 @@
 numpy
 sounddevice
+# The only ASR backend. `mlx-qwen3-asr==0.3.5` sat here until 2026-08-17 and was removed with
+# the model it loaded — see docs/decisions/0012. Nothing in `src/` imports it; the bake-off
+# harness can still score that family if the package is installed by hand, which is deliberate:
+# reproducing the comparison must not require it to be a product dependency.
 mlx-whisper
-webrtcvad
+webrtcvad-wheels
 python-dotenv
 sentence-transformers
+# Retrieval store. Local mode is an embedded database with no server, so the offline
+# guarantee is unaffected; the same client covers a remote host (V29).
+qdrant-client
 streamlit
+
+# Voice-activity gate. `pyannote.audio` is a hard dependency since 2026-08-18 -- see
+# docs/decisions/0013. It was deliberately NOT one before, and `src/diarize.py` explains what
+# that bought; the gate in the live path is what changed the answer.
+pyannote.audio
