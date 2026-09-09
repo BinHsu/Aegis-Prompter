@@ -56,6 +56,15 @@ from the stale copy.
   real files there.
 - **`.env.example` is the tracked template.** Any new `.env` flag must be added to it in the
   same change.
+- **Never `kill`, `pkill` or `killall`. Stop a run with `TaskStop` and its task id.** A pattern
+  match can hit a process that is not yours; a task id is exact. A `PreToolUse` hook in
+  `.claude/settings.json` enforces this and appends a line to `.claude/no-kill-hook.log` on every
+  Bash call, so "wired but never invoked" is distinguishable from "wired and allowing".
+
+  **If `TaskStop` cannot reach what you want to stop, the mistake happened earlier: you chained
+  several runs into one background task.** Launch **one task per run**. Added 2026-08-17 after
+  exactly that — two measurement runs were chained, ending only the first required `kill`, and
+  the signal had to be escalated to `-9` because the process was blocked inside Metal.
 - **Documentation Sync.** When you add a feature, change architecture, or introduce a
   configuration toggle, you MUST evaluate whether `README.md` needs updating. Put requirements and
   measured constraints in `REQUIREMENTS.md`, progress in `STATE.md`, and notable changes in
@@ -66,9 +75,12 @@ from the stale copy.
 These are not style preferences. Each one exists because breaking it produced a real
 failure. Read the surrounding code before touching any of them.
 
-- **Serialize all NPU access.** Concurrent Metal calls from the two transcriber threads
-  crash the process. Every `mlx_whisper` call, including the warm-up call, must hold the
-  module-level lock in `transcriber.py`.
+- **Serialize all NPU access.** Every inference call, including the warm-up call, must hold the
+  module-level `NPU_LOCK` in `transcriber.py`. This was written from a crash on an older
+  toolchain; **that crash no longer reproduces** on Python 3.12 / `mlx` 0.32 (**V57**). The rule
+  stands anyway, and the measurement is why: removing the lock bought **0%** — one GPU means the
+  queue simply moves to the Metal scheduler. A guard that costs nothing measurable is kept, not
+  argued about. Do not delete it on the grounds that the original crash is gone.
 - **Never block the audio callback.** It may do VAD and enqueue, nothing more. Whisper
   inference runs on its own queue and thread specifically because running it inline dropped
   frames.

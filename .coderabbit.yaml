@@ -1,0 +1,96 @@
+# CodeRabbit configuration. Every key below was checked against the published schema at
+# https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json rather than recalled, because
+# an unknown key in this file is ignored silently -- which would produce a config that looks like it
+# tunes the review and does not. That failure mode has already cost this repository five times over
+# (see REQUIREMENTS.md V91, V101, V104): a check that cannot fail reads exactly like one that passes.
+#
+# `reviews.auto_review.enabled` is `true` by default, so this file is not what makes reviews happen.
+# On a public repository CodeRabbit requires a maintainer to trigger the first pass by commenting
+# `@coderabbitai full review`; that is its OSS policy, not a setting.
+language: en-US
+
+# Hard limit of 250 characters in the schema; the first draft was 351 and would have been rejected.
+tone_instructions: >-
+  Be unkind to assertions that could not have gone the other way. For any check, ask what it would
+  print if the thing it guards were broken, and say so when the answer is "the same". Prefer an
+  uncomfortable finding over a polite summary.
+
+reviews:
+  # This repository would rather be told something uncomfortable than read a polite summary.
+  profile: assertive
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    drafts: true
+
+  path_filters:
+    # Generated from the AST by tools/gen_filemap.py; reviewing it reviews the generator's output.
+    - "!FILEMAP.md"
+    # The operator's private material and machine-local artefacts. Gitignored, and named here so a
+    # future change that accidentally tracks one of them does not send it to a third party.
+    - "!context/**"
+    - "!history/**"
+    - "!logs/**"
+    - "!fixtures/asr/results/**"
+    # Measurement notes and one TSV of fixture offsets -- data and records, not code. Excluding
+    # them also drops the reviewable count, and that is worth stating rather than leaving as a
+    # convenient side effect: CodeRabbit skips a PR above 100 files, and this PR is 108 because
+    # 211 commits were squashed into one. A single commit that large is hard for any reviewer,
+    # human or otherwise; the filters below reduce noise and do not fix that.
+    - "!fixtures/**"
+    # Dated handover files that name their own expiry and ask to be deleted once read. MORNING.md
+    # was filtered here too until 2026-08-21, when it expired by its own terms and was deleted --
+    # a filter naming a file that does not exist is dead config, and this repo has already been
+    # bitten by references that point at nothing.
+    - "!HANDOFF.md"
+
+  path_instructions:
+    - path: "src/**/*.py"
+      instructions: >-
+        Runtime code. Four invariants exist because breaking each one produced a real failure, and
+        each is documented at its site: every `mlx_whisper` call including warm-up holds the
+        module-level `NPU_LOCK`; the audio callback may do voice detection and enqueue and nothing
+        else; audio devices are matched by name substring and never by index, because indices move
+        between runs; and Streamlit re-runs the whole script on every poll tick, so anything
+        expensive or stateful lives behind the `GlobalState` singleton or a cache decorator rather
+        than at module scope. Flag any change that weakens one of these even if the change looks
+        locally correct. Runtime modules import each other bare (`import bootstrap`) because
+        `app.py` puts `src/` on `sys.path`; tests import with the `src.` prefix. Both conventions are
+        load-bearing -- do not suggest aligning one to the other.
+    - path: "tests/**/*.py"
+      instructions: >-
+        Ask of every test what it would look like if the code under it were broken. A test that
+        cannot fail is the defect this repository keeps finding. Mocked hardware is worse than no
+        test where the thing being claimed is hardware behaviour. Tests must build their own
+        fixtures with `tmp_path` and must never read or write `.env`, `context/`, `history/` or
+        `logs/` -- a test once called a delete helper with its default argument, which was the real
+        `.env`. Numeric limits, timeouts, retry counts and page sizes want boundary cases either
+        side of the limit, not just a value in the middle.
+    - path: "tools/**/*.py"
+      instructions: >-
+        Measurement scripts. The output of one of these becomes a recorded constraint in
+        REQUIREMENTS.md, so a script that reports a plausible number it did not actually measure is
+        the worst defect available here. Check specifically: does every summary statistic have the
+        raw distribution written beside it, could a stage report success while measuring nothing,
+        and is any input path or output directory hardcoded in a way that would replay stale data.
+    - path: "**/*.sh"
+      instructions: >-
+        macOS ships bash 3.2 -- `mapfile` and `readarray` do not exist. `grep -c` prints its count
+        and exits non-zero when the count is zero, so `$(grep -c ... || echo 0)` yields two lines
+        and breaks any integer test that follows. A `trap` on INT or TERM must exit explicitly or
+        bash continues to the next command with state already restored. Flag each of these; all
+        three have occurred in this repository.
+    - path: "{REQUIREMENTS,STATE}.md"
+      instructions: >-
+        REQUIREMENTS.md holds statements that stay true once work is done -- requirements, measured
+        constraints, closed decisions -- and a large deletion here is a warning sign rather than
+        tidying. STATE.md holds what stops being true once the work is done. A measured constraint
+        must carry its method, its sample size and what would have refuted it; flag any that states
+        a number without them. REQUIREMENTS.md must never cite a plan number, because those are
+        renumbered.

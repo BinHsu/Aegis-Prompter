@@ -92,10 +92,75 @@ where it occurs.
 | Detached auto-spawn of the summary at `atexit` (`AUTO_SUMMARIZE_ON_EXIT`, default on) | Launches a detached process running a 3B model with no operator consent, no visible progress, and failures reported only into a log file inside a directory nobody is watching (**R39**, **R41**). It also fires from `atexit` in a Streamlit app that re-executes constantly. |
 | The env keys `WHISPER_MODEL`, `WHISPER_LANGUAGE`, `TRANSCRIBE_MODE`, `SUMMARY_MODEL`, `AUTO_SUMMARIZE_ON_EXIT` | The persisted inventory in `REQUIREMENTS.md` is normative (**R32**). `WHISPER_MODEL` is absorbed by `ASR_MODEL`; the rest are not settings the operator maintains — language is auto-detected per chunk (**R8**, **R10**), and commit mode is derived from whether the advisor is armed. |
 
+## Amendment, 2026-08-17 — the reasons for keeping the branch have mostly expired
+
+The 2026-08-10 amendment held the branch until later work took three pieces. Checked today, item
+by item, because a "do not delete" note whose grounds have quietly gone is worse than no note —
+the next reader obeys it without being able to say why.
+
+| Piece it was held for | Now |
+|---|---|
+| `_capture_writer` and the `stop()` finalisation ordering | ✅ **taken** by the retention work, 2026-08-13 |
+| `retranscribe.py` | ❌ **not taken.** The re-listening pass was written fresh as `src/relisten.py` |
+| `summarizer.py` | ❌ **void.** The cleanup work it belonged to was deleted outright — this application performs no post-processing at all, so there is no local summariser to inherit and there will not be |
+
+So one obligation is discharged and two are dead. **`relisten.py` was written without consulting
+`retranscribe.py`**, which is worth stating plainly rather than implying it was considered: the
+design changed underneath it — a shared timebase now exists because retention records each track's
+first frame, and the operator's numbered-label scheme has no counterpart on the branch.
+
+**What the branch is still worth** is a question, not an answer, and it is the operator's:
+`retranscribe.py`'s merge logic was verified by experiment there and `relisten.py`'s has been run
+once on a two-minute slice. Comparing them may be worth an hour, or may not.
+
+**The commits are safe either way** — the local tag `archive/streaming-transcriber` points at
+`467a442`, confirmed today, which is the same tip this record names. It is **not pushed**, so it
+protects this clone and no other.
+
+## Amendment, 2026-08-13 — one of the four contradictions stopped being one
+
+The adopt-after-rework row for durable WAV capture lists four things wrong with the branch's
+implementation, and the first of them was **"writes 16 kHz (`decision 0001` requires 48 kHz)"**.
+That was true when this record was written on 2026-08-10 and **false the next day**: `0001` was
+reversed on 2026-08-11 and now requires 16 kHz, which is what the branch was doing all along.
+
+The row is left as written, per the never-rewrite rule. What the retention work actually took, and
+what it had to fix, is in `STATE.md`'s retention item. **Three contradictions were real** — the
+location, the filenames, and capturing unconditionally with no toggle and no warning — and the
+rate was not one of them.
+
+Recorded because the failure generalises and has now happened twice in this repository in one
+week: **a record that cites another record inherits its reversals, and nothing walks them back.**
+Read the cited record's current status before acting on a claim about it.
+
+## Amendment, 2026-08-10 — do not delete the branch yet
+
+The consequence below saying the branch may be deleted is **wrong as written**, and the error is
+worth naming rather than quietly editing: this record preserves what the branch *knew*, not what
+it *is*. Knowledge and code are not the same asset. Two of the pieces sorted above are not ideas
+to be re-derived from prose — they are working implementations that later work is expected to take
+and rework:
+
+- `src/transcriber.py`'s `_capture_writer` queue-and-thread capture and its `stop()` finalisation
+  ordering, which the retention work inherits (**R45**).
+- `src/retranscribe.py` (262 lines, merge logic verified by experiment) and `src/summarizer.py`
+  (136 lines), which the retention and cleanup work inherit (**R45**, **R15**).
+
+Deleting the remote ref makes tip `467a442` unreachable and eventually collectable. **The branch
+stays until the retention and cleanup work have taken their pieces.** A local tag
+`archive/streaming-transcriber` now points at the tip so the commits survive a branch deletion;
+it is not pushed, so it protects this clone only.
+
+Separately, one piece sorted above **has since become worthless**: the branch's `app.py` and
+`global_state.py` diffs. They build on the module-scope auto-start that the configuration work
+deleted, and `start_recording()` has since been split into `warm_up()` plus `start_recording()`
+(`docs/decisions/0007`). The WAV capture must be attached to the new lifecycle; its wiring on the
+branch cannot be copied.
+
 ## Consequences
 
-- **The remote branch may now be deleted.** This record is the preserved copy of what it knew;
-  until it existed the branch was the only one.
+- ~~**The remote branch may now be deleted.**~~ Superseded by the amendment above. This record is
+  the preserved copy of what the branch knew — but not of the code it still holds.
 - **`V49` is updated to what was verified**, and **`V50`** is added for the Silero 48 kHz behaviour.
   Neither of the branch's own benchmark numbers becomes a constraint — the ≈0.3% figure describes a
   rejected optimisation, and the fanless model comparison was measured on clean TTS clips.

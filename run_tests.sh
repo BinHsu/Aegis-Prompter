@@ -33,5 +33,22 @@ export PYTHONPATH="$PROJECT_ROOT"
     -W ignore::DeprecationWarning \
     -W ignore::FutureWarning \
     -W ignore:"urllib3 v2 only supports OpenSSL"
+STATUS=$?
 
-echo "✅ [COMPLETE] Testing suite finished execution. Environmental warnings were filtered out. Please review the logical green lights."
+# The exit code is checked, and this script exits with it.
+#
+# **It did not, until 2026-08-14.** The line here read
+# `echo "✅ [COMPLETE] Testing suite finished execution..."` and the script returned 0 whatever
+# pytest did -- so a collection error printed a green tick, and any agent following AGENTS.md's
+# "do not report tests as passing without having run them" would have run them, seen ✅, and
+# reported passing tests that never ran. Found when a syntax error in a test file produced
+# "1 error during collection" immediately above that tick.
+#
+# This is the failure REQUIREMENTS.md names as this system's characteristic bug -- reporting
+# success while doing nothing -- sitting in the thing that is supposed to catch it.
+if [ $STATUS -ne 0 ]; then
+    echo "❌ [FAILED] Tests did not pass (pytest exit $STATUS). Nothing above is a green light."
+    exit $STATUS
+fi
+
+echo "✅ [PASSED] All unit tests passed. Environmental warnings were filtered out."
