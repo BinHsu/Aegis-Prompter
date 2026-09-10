@@ -26,11 +26,14 @@ env/
 .pytest_cache/
 
 # Meeting History & Logs
-history/
-logs/
+# no trailing slash: these are symlinks onto external storage (T7 items
+# dir) in local dev, and a trailing-slash pattern only matches real
+# directories, not symlinks-to-directories.
+history
+logs
 
 # Durable raw-audio capture (one WAV per track + generated transcripts)
-recordings/
+recordings
 
 # context
 context/
