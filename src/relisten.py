@@ -232,9 +232,23 @@ def normalize_vocabulary(vocabulary):
     return ", ".join(ordered)
 
 
+def vocabulary_backtick(vocabulary):
+    """True when a term contains a backtick.
+
+    The header prints the list inside a Markdown code span. A backtick in a term closes that
+    span early, so the rest of the line is read as markup rather than as a word the recogniser
+    was primed with.
+    """
+    if not vocabulary:
+        return False
+    if isinstance(vocabulary, str):
+        return "`" in vocabulary
+    return any("`" in str(item) for item in vocabulary)
+
+
 def run(transcript_path, tracks, model_path=None, use_context=True, on_progress=None,
         diarize=False, hf_token="", diarize_model="", speaker_track="Participant",
-        vocabulary=None, out_path=None, source=None):
+        vocabulary=None, out_path=None, source=None, same_container=False, track_order=None):
     """Re-transcribe the retained audio and write `<transcript>_relistened.md`.
 
     `tracks` maps a role label to a WAV path. Returns a dict; never raises -- this runs after a
@@ -250,16 +264,26 @@ def run(transcript_path, tracks, model_path=None, use_context=True, on_progress=
 
     `vocabulary`, when given, replaces the harvested one -- the operator knows the domain terms
     of a recording better than any regex over it. It feeds the same `initial_prompt` either way.
+    A term containing a backtick is refused: the header prints the list in a code span.
+
+    `same_container` is for several audio streams of one file (`tools/relisten_file.py`). They
+    start together because they are one container, and `track_order` is the stream order the
+    header and the transcript keep when two lines share a timestamp. A single mixed file leaves
+    both unset.
     """
     external = not transcript_path
     result = {"output": "", "error": "", "segments": 0, "tracks": {}, "aligned": False,
               "diarized": False, "voices": 0, "diarize_error": "", "external": external,
-              "vocabulary": "", "vocabulary_source": ""}
+              "vocabulary": "", "vocabulary_source": "", "same_container": bool(same_container),
+              "track_order": list(track_order) if track_order else None}
     if not tracks:
         result["error"] = "no retained audio for this session"
         return result
     if external and not out_path:
         result["error"] = "an external recording needs an explicit output path"
+        return result
+    if vocabulary_backtick(vocabulary):
+        result["error"] = "a vocabulary term cannot contain a backtick"
         return result
 
     try:
@@ -296,7 +320,16 @@ def run(transcript_path, tracks, model_path=None, use_context=True, on_progress=
     origin = min(starts.values()) if starts else None
 
     lines = []
-    for label, path in sorted(tracks.items()):
+    if track_order:
+        ordered = []
+        for label in track_order:
+            if label not in tracks:
+                result["error"] = f"unknown track {label}"
+                return result
+            ordered.append((label, tracks[label]))
+    else:
+        ordered = sorted(tracks.items())
+    for label, path in ordered:
         if on_progress:
             on_progress(f"reading {os.path.basename(path)}")
         samples, rate = read_wav_mono_int16(path)
@@ -381,9 +414,14 @@ def _render(transcript_path, tracks, lines, result, context, model, kind, source
     if external:
         name = os.path.basename(source) if source else \
             ", ".join(sorted(os.path.basename(p) for p in tracks.values()))
-        supplied = "one file" if single else "files"
-        out.append(f"- **Source recording**: `{name}` — {supplied} supplied from outside this "
-                   f"application, so there is no live transcript and no recorded timebase")
+        if result.get("same_container"):
+            out.append(f"- **Source recording**: `{name}` — one file supplied from outside this "
+                       f"application, so there is no live transcript. Its audio streams are "
+                       f"separate tracks and share one timebase")
+        else:
+            supplied = "one file" if single else "files"
+            out.append(f"- **Source recording**: `{name}` — {supplied} supplied from outside this "
+                       f"application, so there is no live transcript and no recorded timebase")
     else:
         out.append(f"- **Source audio**: "
                    f"{', '.join(sorted(os.path.basename(p) for p in tracks.values()))}")
@@ -402,7 +440,13 @@ def _render(transcript_path, tracks, lines, result, context, model, kind, source
                    f"below was suggested as well as heard")
     else:
         out.append("- **Vocabulary bias**: off")
-    if external and single:
+    if external and result.get("same_container"):
+        order = result.get("track_order") or list(tracks)
+        named = ", ".join(f"`{label}`" for label in order)
+        out.append(f"- **Tracks**: {len(order)}, one per audio stream of this file, in stream "
+                   f"order ({named}). They share one timebase: they start together because they "
+                   f"are one container.")
+    elif external and single:
         # R2 is a property of audio this application captured. A file from outside has one
         # stream, and a call in it is already mixed — saying "two tracks" here would be the
         # retained-session header describing a recording that was never two files.
@@ -422,8 +466,13 @@ def _render(transcript_path, tracks, lines, result, context, model, kind, source
                    "transcript, so the two tracks are aligned as if they began together. "
                    "**They did not.** Treat cross-track ordering as approximate.")
     where = "in this recording" if external else "on the far side"
-    everyone = ("Every line carries the same label, whoever spoke." if external else
-                "Everything from the far side is one label, however many people spoke.")
+    if external and result.get("same_container"):
+        everyone = ("Each line is labelled with the stream it came from. People who shared a "
+                    "stream were not separated.")
+    elif external:
+        everyone = "Every line carries the same label, whoever spoke."
+    else:
+        everyone = "Everything from the far side is one label, however many people spoke."
     if result.get("diarized"):
         out.append(f"- **Voices separated**: {result['voices']} {where}, labelled "
                    f"`與會者1`… by **sound alone**. The labels say which lines share a voice and "
@@ -433,7 +482,11 @@ def _render(transcript_path, tracks, lines, result, context, model, kind, source
         out.append(f"- ⚠️ **Voices not separated**: {result['diarize_error']} {everyone}")
     else:
         out.append(f"- **Speaker attribution**: not performed. {everyone} (R12)")
-    for label, info in sorted(result["tracks"].items()):
+    summary_order = result.get("track_order") or sorted(result["tracks"])
+    for label in summary_order:
+        info = result["tracks"].get(label)
+        if not info:
+            continue
         if info.get("error"):
             out.append(f"- ❌ **{label}**: {info['error']}")
         else:
@@ -460,13 +513,21 @@ def _render(transcript_path, tracks, lines, result, context, model, kind, source
     # to rejoin fragments from a 0.4 s flush that never happened and to look for advisor lines
     # that do not exist -- while the header above said the flush was 1.2 s. Found 2026-08-17.
     if external:
-        label = sorted(tracks)[0] if single else "Recording"
+        order = result.get("track_order") or sorted(tracks)
+        label = order[0] if order else "Recording"
         # The original path, when we have it: the WAV in `tracks` is usually a temporary
         # conversion and will be gone by the time anyone reads this file.
-        audio = {label: source} if (single and source) else dict(tracks)
+        if result.get("same_container") and source:
+            audio = {label: source}
+        elif single and source:
+            audio = {label: source}
+        else:
+            audio = dict(tracks)
         out.append(postmeeting.render_block(
             kind=postmeeting.EXTERNAL, flush_s=SILENCE_FLUSH_S, audio=audio,
-            roles=(label, label), speakers_separated=bool(result.get("diarized"))))
+            roles=tuple(order) if result.get("same_container") else (label, label),
+            speakers_separated=bool(result.get("diarized")),
+            separate_streams=bool(result.get("same_container"))))
     else:
         out.append(postmeeting.render_block(kind=postmeeting.RELISTENED,
                                             flush_s=SILENCE_FLUSH_S))

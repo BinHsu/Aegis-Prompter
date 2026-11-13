@@ -35,9 +35,12 @@ All notable changes to this project are documented in this file.
   session gets from its own transcript, and the written header lists those terms because the
   recogniser can echo a prompt. The header describes one external recording. It does not talk
   about two tracks or a missing timebase. Voice separation stays the optional `--diarize` flag,
-  off unless asked for. A file with more than one audio stream is refused, and so is a file whose
-  stream list cannot be read, rather than transcribed as if one stream were the whole recording.
-  When separation does run, the briefing at the end of the file says so too.
+  off unless asked for, and this command does not install it. A file whose stream list cannot
+  be read is refused. A file with several audio streams — a screen recording that kept the
+  microphone and the system audio apart — is transcribed as one track per stream, `Stream 1`,
+  `Stream 2`, … unless `--labels` names them. The header says they share one timebase because
+  they are one container. When separation does run on a single mixed stream, the briefing at the
+  end of the file says so too.
 - **Re-listen a kept meeting, and optionally tell the voices apart.** One button re-runs speech
   recognition over the retained audio with a longer silence flush, so sentences arrive whole
   instead of cut at every pause, and the material voice detection discarded gets read again — the

@@ -488,6 +488,39 @@ def test_a_diarized_external_file_does_not_tell_the_agent_separation_never_happe
     assert "one role" not in prompt
 
 
+def test_streams_of_one_file_share_a_timebase_and_keep_stream_order(tmp_path, stub_asr):
+    first = _write(tmp_path / "first.wav", _tone(1.0))
+    second = _write(tmp_path / "second.wav", _tone(1.0))
+    out = tmp_path / "call_relistened.md"
+
+    result = relisten.run(
+        None, {"B side": first, "A side": second},
+        out_path=str(out), source=str(tmp_path / "call.mov"),
+        same_container=True, track_order=["B side", "A side"])
+    written = out.read_text(encoding="utf-8")
+    body = written.split("## 📝 Transcript", 1)[1]
+
+    assert result["error"] == ""
+    assert "one per audio stream" in written
+    assert "share one timebase" in written
+    assert "start together because they are one container" in written
+    assert "`B side`, `A side`" in written
+    assert "They may not have" not in written
+    assert "They did not" not in written
+    assert "one role" not in written
+    assert "both sides are mixed" not in written
+    assert body.index("B side**:") < body.index("A side**:")
+
+
+def test_a_backtick_in_the_vocabulary_writes_nothing(tmp_path):
+    out = tmp_path / "call_relistened.md"
+    result = relisten.run(None, {"Recording": str(tmp_path / "nope.wav")},
+                          out_path=str(out), vocabulary="Da`tag")
+    assert "backtick" in result["error"]
+    assert result["output"] == ""
+    assert not out.exists()
+
+
 def test_an_unloadable_model_is_reported_and_writes_nothing(tmp_path, monkeypatch):
     import transcriber as tr
 

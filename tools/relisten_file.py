@@ -6,13 +6,13 @@ a live transcript beside it. A recording made elsewhere -- a screen capture of a
 memo -- needed a hand-written placeholder session, a manual `ffmpeg` conversion and a Python call.
 This is that, as one command:
 
-1. `ffmpeg` converts the first audio stream into a temporary 16 kHz mono 16-bit WAV, the one
-   shape `relisten.read_wav_mono_int16` accepts. Channels are down-mixed. A file with more than
-   one audio stream is refused, and so is a file whose stream list cannot be read: this command
-   is for one mixed track, and keeping one stream of several would describe a call it only half
-   heard.
-2. The existing pass runs over that one track, with **no live transcript**, so the output header
-   describes a single external file instead of two tracks and a missing timebase.
+1. `ffmpeg` converts each audio stream into its own temporary 16 kHz mono 16-bit WAV, the shape
+   `relisten.read_wav_mono_int16` accepts. Channels within a stream are down-mixed. One stream is
+   one track. A screen recording that kept the microphone and the system audio apart therefore
+   stays two tracks, labelled `Stream 1` and `Stream 2` unless `--labels` names them. They share
+   a timebase because they are one container. A file whose stream list cannot be read is refused.
+2. The existing pass runs over those tracks, with **no live transcript**. One stream is described
+   as a mixed recording. Several streams are described as separate tracks of one file.
 3. `--vocab` primes the recogniser with the operator's own domain terms through the same
    `initial_prompt` the archived path uses. The terms are printed in the output header, because
    they are text the decoder may copy (**V74**).
@@ -76,11 +76,32 @@ def audio_stream_count(ffmpeg, input_path):
     return len(_AUDIO_STREAM.findall(completed.stderr))
 
 
-def convert(ffmpeg, input_path, wav_path):
-    """Decode the first audio stream into 16 kHz mono 16-bit PCM. Returns an error string or ""."""
+def track_labels(count, labels_arg, single_label):
+    """Names for each audio stream, in stream order.
+
+    Several streams default to `Stream 1`, `Stream 2`, …. One stream keeps `single_label`
+    (`--label`, default `Recording`) unless `--labels` names it. Returns `(names, error)`.
+    """
+    if labels_arg:
+        names = [" ".join(part.split()) for part in labels_arg.split(",")]
+        if len(names) != count or any(not name for name in names):
+            return [], (f"--labels needs {count} names for {count} audio streams, "
+                        f"in stream order")
+        if len(set(names)) != len(names):
+            return [], "--labels names must be distinct, because each stream is its own track"
+        if any("`" in name for name in names):
+            return [], "a track label cannot contain a backtick"
+        return names, ""
+    if count == 1:
+        return [single_label], ""
+    return [f"Stream {index}" for index in range(1, count + 1)], ""
+
+
+def convert(ffmpeg, input_path, wav_path, stream_index=0):
+    """Decode audio stream `stream_index` into 16 kHz mono 16-bit PCM. Returns an error or ""."""
     command = [ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
-               "-i", input_path, "-vn", "-ac", "1", "-ar", str(TARGET_RATE),
-               "-c:a", "pcm_s16le", wav_path]
+               "-i", input_path, "-vn", "-map", f"0:a:{stream_index}",
+               "-ac", "1", "-ar", str(TARGET_RATE), "-c:a", "pcm_s16le", wav_path]
     completed = subprocess.run(command, capture_output=True, text=True)
     if completed.returncode != 0:
         return f"ffmpeg exit {completed.returncode}: {completed.stderr.strip()[-400:]}"
@@ -94,14 +115,21 @@ def parse_args(argv):
         description="Re-transcribe an audio or video file with Aegis Prompter's offline model.")
     parser.add_argument("input", help="any file ffmpeg can decode (.mov, .mp4, .m4a, .wav, ...)")
     parser.add_argument("--vocab", default="",
-                        help="comma-separated domain terms to prime recognition with")
+                        help="comma-separated domain terms to prime recognition with. "
+                             "A term cannot contain a backtick")
     parser.add_argument("--out", default="",
                         help="directory for the markdown (default: next to the input)")
     parser.add_argument("--model", default="",
                         help="ASR model id (default: ASR_MODEL from settings, else the shipped one)")
-    parser.add_argument("--label", default="Recording", help="role label on every line")
+    parser.add_argument("--label", default="Recording",
+                        help="role label when the file has one audio stream (default: Recording)")
+    parser.add_argument("--labels", default="",
+                        help="comma-separated names for each audio stream, in stream order "
+                             "(default: Stream 1, Stream 2, ...)")
     parser.add_argument("--diarize", action="store_true",
-                        help="separate voices (optional, installed on demand; see src/diarize.py)")
+                        help="separate voices on a single mixed stream. This command does not "
+                             "install the diarizer; see src/diarize.py. Not applied when the "
+                             "file has more than one audio stream")
     return parser.parse_args(argv)
 
 
@@ -124,11 +152,12 @@ def main(argv=None):
     if streams == 0:
         print(f"❌ no audio stream in {os.path.basename(input_path)}", file=sys.stderr)
         return 1
-    if streams is not None and streams > 1:
-        print(f"❌ {streams} audio streams in {os.path.basename(input_path)}. This command "
-              f"transcribes one mixed stream — a screen recording with both sides already in "
-              f"one track. It will not pick a stream and call that the whole recording.",
-              file=sys.stderr)
+    labels, label_error = track_labels(streams, args.labels, args.label)
+    if label_error:
+        print(f"❌ {label_error}", file=sys.stderr)
+        return 2
+    if "`" in args.vocab:
+        print("❌ a vocabulary term cannot contain a backtick", file=sys.stderr)
         return 2
     out_dir = os.path.abspath(os.path.expanduser(args.out)) if args.out else \
         os.path.dirname(input_path)
@@ -158,22 +187,35 @@ def main(argv=None):
         return 2
 
     target = output_path(input_path, out_dir)
+    # One mixed stream can still be split by voice. Several streams are already one side each;
+    # diarizing them would invent a second split the container already made.
+    diarize = args.diarize and len(labels) == 1
+    if args.diarize and not diarize:
+        print("⚠️ --diarize applies to one mixed stream. These streams are already separate "
+              "tracks, so voices were not separated further.", file=sys.stderr)
     with tempfile.TemporaryDirectory(prefix="aegis-relisten-") as scratch:
-        wav = os.path.join(scratch, "input.wav")
-        error = convert(ffmpeg, input_path, wav)
-        if error:
-            print(f"❌ {error}", file=sys.stderr)
-            return 1
+        tracks = {}
+        for index, label in enumerate(labels):
+            wav = os.path.join(scratch, f"stream-{index}.wav")
+            # One stream keeps the 3-argument call the single-file tests replace.
+            error = convert(ffmpeg, input_path, wav) if len(labels) == 1 else \
+                convert(ffmpeg, input_path, wav, index)
+            if error:
+                print(f"❌ {error}", file=sys.stderr)
+                return 1
+            tracks[label] = wav
         outcome = relisten.run(
-            None, {args.label: wav},
+            None, tracks,
             model_path=model,
             vocabulary=args.vocab,
             out_path=target,
             source=input_path,
-            diarize=args.diarize,
+            diarize=diarize,
             hf_token=(settings.get("HF_TOKEN") or "").strip(),
             diarize_model=(settings.get("DIARIZE_MODEL") or "").strip(),
-            speaker_track=args.label,
+            speaker_track=labels[0],
+            same_container=len(labels) > 1,
+            track_order=labels,
             on_progress=lambda label: print(f"🎧 {label}", file=sys.stderr),
         )
 

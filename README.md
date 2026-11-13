@@ -48,6 +48,8 @@ We often witness two highly asymmetric, high-pressure meeting scenarios:
   ```zsh
   .venv/bin/python tools/relisten_file.py call.mov --vocab "Datadog, JSON, TrueWatch, pipeline"
   ```
+
+  A screen recording that kept the microphone and the system audio as two streams becomes two tracks, `Stream 1` and `Stream 2`, which start together because they are one file. Name them with `--labels "Me,Them"`. One mixed stream is still one track.
 * **Optional dual-track recording, and it tells you what it did**:
   Armed on the pre-flight panel, off until you turn it on, then sticky — because the meeting that later turns out to matter is the one nobody armed. It writes two lossless WAVs per session, one per track, tapped from the raw stream **before** voice detection, so what the transcript discarded is still on disk. The session log states whether audio was kept and where, so "recorded and later deleted" is never mistaken for "never recorded". About 0.23 GB per hour for both tracks.
 * **100% Offline & Private**: Zero telemetry, and nothing leaves the machine on its own. The advisor slots are the only door out, they are empty until you type a host into them, they are off until you arm them per meeting, and the panel says so at the moment you do. Point them at Ollama or a local Qdrant and the product is still entirely offline; point them at a cloud endpoint and you have decided that, deliberately.

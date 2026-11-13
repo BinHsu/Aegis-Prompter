@@ -372,6 +372,19 @@ def test_a_separated_external_recording_does_not_deny_the_separation():
     assert "/tmp/call.mov" in prompt
 
 
+def test_separate_streams_are_not_described_as_one_mixed_role():
+    prompt = postmeeting.build_prompt(
+        kind=postmeeting.EXTERNAL, separate_streams=True,
+        roles=("Stream 1", "Stream 2"), audio={"Stream 1": "/tmp/call.mov"})
+
+    assert "`Stream 1`" in prompt and "`Stream 2`" in prompt
+    assert "start together because they are one container" in prompt
+    assert "one role" not in prompt
+    assert "both sides are mixed" not in prompt
+    assert "shared a stream were not separated" in prompt
+    assert "/tmp/call.mov" in prompt
+
+
 def test_the_external_variant_does_not_claim_the_audio_was_never_kept():
     prompt = postmeeting.build_prompt(kind=postmeeting.EXTERNAL)
     assert "Retention was off" not in prompt

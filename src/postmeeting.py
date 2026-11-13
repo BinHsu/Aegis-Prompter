@@ -51,7 +51,7 @@ EXTERNAL = "external"
 
 
 def build_prompt(session_id="", audio=None, roles=("Speaker (You)", "Participant"),
-                 kind=LIVE, flush_s=None, speakers_separated=False):
+                 kind=LIVE, flush_s=None, speakers_separated=False, separate_streams=False):
     """The briefing an outside agent needs, plus the three deliverables. Pure: no I/O.
 
     `audio` is the `{track: path}` mapping retention produced, or empty when the operator did not
@@ -62,7 +62,8 @@ def build_prompt(session_id="", audio=None, roles=("Speaker (You)", "Participant
     is appended to, and the two files differ in four specifics -- timestamps, advisor lines, the
     silence flush, and whether the audio is a separate artefact or the thing this was made from.
     """
-    speaker, participant = roles
+    speaker = roles[0] if roles else "Speaker (You)"
+    participant = roles[1] if len(roles) > 1 else speaker
     external = kind == EXTERNAL
     relistened = kind in (RELISTENED, EXTERNAL)
     lines = [
@@ -94,6 +95,14 @@ def build_prompt(session_id="", audio=None, roles=("Speaker (You)", "Participant
             "both sides are mixed in it.** Voices were then separated by sound; the header "
             "names those labels. A label is not a side of the call and not a person's name. "
             "Do not infer sides from it.",
+        ]
+    elif external and separate_streams:
+        named = ", ".join(f"`{name}`" for name in roles)
+        lines += [
+            f"- There are {len(roles)} roles, in stream order: {named}. Each is one audio stream "
+            "of a single file. They start together because they are one container, so a line's "
+            "label is which stream it came from, not a guess from the words. A stream can still "
+            "hold more than one voice; the label does not say which of them spoke.",
         ]
     elif external:
         lines += [
@@ -146,6 +155,11 @@ def build_prompt(session_id="", audio=None, roles=("Speaker (You)", "Participant
          "collect for the report are names that were *spoken*; which line belongs to whom is a "
          "different question and nothing here can answer it."
          if external and speakers_separated else
+         "- **People who shared a stream were not separated.** Do not invent names, do not split "
+         "a label, and do not relabel a line — not even where you are confident. The names you "
+         "collect for the report are names that were *spoken*; which line belongs to whom is a "
+         "different question and nothing here can answer it."
+         if external and separate_streams else
          "- **Individual speakers were never separated.** Everything "
          f"{'in the recording' if external else 'from the far side'} is labelled "
          f"`{participant}`, however many people were talking. **Do not invent names, do not split "
@@ -221,7 +235,8 @@ def build_prompt(session_id="", audio=None, roles=("Speaker (You)", "Participant
 
 
 def render_block(session_id="", audio=None, kind=LIVE, flush_s=None,
-                 roles=("Speaker (You)", "Participant"), speakers_separated=False):
+                 roles=("Speaker (You)", "Participant"), speakers_separated=False,
+                 separate_streams=False):
     """The whole appendix, marker included, ready to write at the end of the transcript.
 
     `kind` must match the file this is appended to. See `build_prompt`.
@@ -234,7 +249,8 @@ def render_block(session_id="", audio=None, kind=LIVE, flush_s=None,
         HEADING,
         "",
         build_prompt(session_id=session_id, audio=audio, kind=kind, flush_s=flush_s,
-                     roles=roles, speakers_separated=speakers_separated),
+                     roles=roles, speakers_separated=speakers_separated,
+                     separate_streams=separate_streams),
         "",
     ])
 

@@ -237,18 +237,18 @@ Whether a configured model still exists, and a prompt for finding a replacement.
 - `build_search_prompt()` (L153)
 - `replacement_advice()` (L193)
 
-### `src/postmeeting.py` — 315 lines
+### `src/postmeeting.py` — 331 lines
 
 The post-meeting prompt appended to every session transcript.
 
 - `build_prompt()` (L53)
-- `render_block()` (L223)
-- `extract()` (L242)
-- `audio_paths()` (L255)
-- `list_sessions()` (L272)
-- `read_prompt()` (L309)
+- `render_block()` (L237)
+- `extract()` (L258)
+- `audio_paths()` (L271)
+- `list_sessions()` (L288)
+- `read_prompt()` (L325)
 
-### `src/relisten.py` — 473 lines
+### `src/relisten.py` — 534 lines
 
 Re-transcribe a retained meeting from its audio, and fill in what the live path dropped.
 
@@ -260,8 +260,9 @@ Re-transcribe a retained meeting from its audio, and fill in what the live path 
 - `vocabulary_from()` (L153)
 - `track_starts()` (L186)
 - `normalize_vocabulary()` (L216)
-- `run()` (L235)
-- `_render()` (L375)
+- `vocabulary_backtick()` (L235)
+- `run()` (L249)
+- `_render()` (L408)
 
 ### `src/system_audio.py` — 226 lines
 
@@ -697,7 +698,7 @@ Whether a configured model still exists, and what the operator is handed when it
 - `test_an_empty_model_id_still_produces_a_usable_prompt()` (L208)
 - `test_the_durable_answer_points_at_the_bake_off_not_at_a_list()` (L216)
 
-### `tests/unit/test_postmeeting.py` — 378 lines
+### `tests/unit/test_postmeeting.py` — 391 lines
 
 The post-meeting prompt: what an outside agent is told, and what it is warned about.
 
@@ -736,7 +737,8 @@ The post-meeting prompt: what an outside agent is told, and what it is warned ab
 - `test_both_variants_still_forbid_inventing_and_relabelling()` (L330)
 - `test_the_external_variant_does_not_describe_two_unmixed_tracks()` (L339)
 - `test_a_separated_external_recording_does_not_deny_the_separation()` (L360)
-- `test_the_external_variant_does_not_claim_the_audio_was_never_kept()` (L375)
+- `test_separate_streams_are_not_described_as_one_mixed_role()` (L375)
+- `test_the_external_variant_does_not_claim_the_audio_was_never_kept()` (L388)
 
 ### `tests/unit/test_private_dirs_untouched.py` — 62 lines
 
@@ -781,7 +783,7 @@ Arming an advisor slot is a per-meeting choice — disarming it must actually st
 - `test_the_prompt_names_the_retained_audio_when_there_is_some()` (L254)
 - `test_the_prompt_says_so_when_nothing_was_kept()` (L268)
 
-### `tests/unit/test_relisten.py` — 504 lines
+### `tests/unit/test_relisten.py` — 537 lines
 
 Re-listening: segmentation, the timebase, the vocabulary, and what the output declares.
 
@@ -821,9 +823,11 @@ Re-listening: segmentation, the timebase, the vocabulary, and what the output de
 - `test_an_external_file_without_vocabulary_is_unbiased()` (L454)
 - `test_an_external_recording_without_an_output_path_is_refused()` (L467)
 - `test_a_diarized_external_file_does_not_tell_the_agent_separation_never_happened()` (L473)
-- `test_an_unloadable_model_is_reported_and_writes_nothing()` (L491)
+- `test_streams_of_one_file_share_a_timebase_and_keep_stream_order()` (L491)
+- `test_a_backtick_in_the_vocabulary_writes_nothing()` (L515)
+- `test_an_unloadable_model_is_reported_and_writes_nothing()` (L524)
 
-### `tests/unit/test_relisten_file.py` — 250 lines
+### `tests/unit/test_relisten_file.py` — 311 lines
 
 The command that re-listens to a file this application never captured.
 
@@ -835,11 +839,14 @@ The command that re-listens to a file this application never captured.
 - `test_a_missing_file_is_refused_before_any_settings_are_read()` (L75)
 - `test_a_stereo_file_is_downmixed_to_the_wav_relisten_reads()` (L86)
 - `test_say_aiff_converts_to_the_wav_relisten_reads()` (L104)
-- `test_more_than_one_audio_stream_is_refused()` (L120)
-- `test_the_command_hands_the_vocabulary_to_relisten_and_does_not_diarize()` (L145)
-- `test_diarize_when_asked_targets_the_only_track()` (L198)
-- `test_a_missing_model_does_not_convert_or_download()` (L222)
-- `test_an_unconfigured_machine_stops_before_offline_or_conversion()` (L237)
+- `test_two_audio_streams_reach_relisten_as_two_tracks()` (L120)
+- `test_labels_must_name_each_stream()` (L167)
+- `test_a_backtick_in_the_vocabulary_is_refused_before_settings_are_read()` (L182)
+- `test_diarize_help_does_not_claim_the_command_installs_it()` (L197)
+- `test_the_command_hands_the_vocabulary_to_relisten_and_does_not_diarize()` (L206)
+- `test_diarize_when_asked_targets_the_only_track()` (L259)
+- `test_a_missing_model_does_not_convert_or_download()` (L283)
+- `test_an_unconfigured_machine_stops_before_offline_or_conversion()` (L298)
 
 ### `tests/unit/test_soak_capture_dwell.py` — 90 lines
 
@@ -1232,15 +1239,16 @@ Drive the real application through Start, a fed transcript, and Stop.
 
 - `main()` (L69)
 
-### `tools/relisten_file.py` — 192 lines
+### `tools/relisten_file.py` — 234 lines
 
 Re-listen to any audio or video file, not only a session this application retained.
 
 - `output_path()` (L43)
 - `audio_stream_count()` (L62)
-- `convert()` (L79)
-- `parse_args()` (L92)
-- `main()` (L108)
+- `track_labels()` (L79)
+- `convert()` (L100)
+- `parse_args()` (L113)
+- `main()` (L136)
 
 ### `tools/rescore_leakage_micro.py` — 115 lines
 

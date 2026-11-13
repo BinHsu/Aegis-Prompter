@@ -117,19 +117,14 @@ def test_say_aiff_converts_to_the_wav_relisten_reads(tmp_path):
     assert samples is not None and len(samples) > 0
 
 
-def test_more_than_one_audio_stream_is_refused(tmp_path, monkeypatch):
+def test_two_audio_streams_reach_relisten_as_two_tracks(tmp_path, monkeypatch):
+    """A screen recording can keep the microphone and the system audio as two streams.
+    Each one is a track, in stream order, and the samples that arrive are that stream's."""
     ffmpeg = _require_ffmpeg()
-    import bootstrap
-
-    def boom(path=None):
-        raise AssertionError("a multi-stream file must be refused before settings are read")
-
-    monkeypatch.setattr(bootstrap, "read_settings", boom)
     left = tmp_path / "left.wav"
     right = tmp_path / "right.wav"
-    tone = (4000).to_bytes(2, "little", signed=True) * 1600
-    _pcm(left, 1, 16000, tone)
-    _pcm(right, 1, 16000, tone)
+    _pcm(left, 1, 16000, (4000).to_bytes(2, "little", signed=True) * 1600)
+    _pcm(right, 1, 16000, (12000).to_bytes(2, "little", signed=True) * 1600)
     dual = tmp_path / "dual.mkv"
     muxed = subprocess.run(
         [ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
@@ -138,8 +133,74 @@ def test_more_than_one_audio_stream_is_refused(tmp_path, monkeypatch):
         capture_output=True, text=True)
     assert muxed.returncode == 0, muxed.stderr
 
-    code = relisten_file.main([str(dual), "--vocab", "JSON"])
-    assert code == 2
+    _settings(monkeypatch, tmp_path)
+    seen = {}
+
+    def fake_run(transcript_path, tracks, **kwargs):
+        seen["tracks"] = list(tracks)
+        seen["kwargs"] = kwargs
+        seen["means"] = []
+        for label in kwargs["track_order"]:
+            samples, _rate = relisten.read_wav_mono_int16(tracks[label])
+            seen["means"].append(int(samples.mean()))
+        return {"output": kwargs["out_path"], "error": "", "segments": 0,
+                "vocabulary": "", "diarize_error": ""}
+
+    monkeypatch.setattr(relisten, "run", fake_run)
+    out = tmp_path / "notes"
+    assert relisten_file.main([str(dual), "--out", str(out), "--diarize"]) == 0
+    assert seen["tracks"] == ["Stream 1", "Stream 2"]
+    assert seen["kwargs"]["track_order"] == ["Stream 1", "Stream 2"]
+    assert seen["kwargs"]["same_container"] is True
+    assert seen["kwargs"]["diarize"] is False
+    assert abs(seen["means"][0] - 4000) < 50
+    assert abs(seen["means"][1] - 12000) < 50
+
+    assert relisten_file.main(
+        [str(dual), "--out", str(out), "--labels", "Them,Me"]) == 0
+    assert seen["tracks"] == ["Them", "Me"]
+    assert seen["kwargs"]["track_order"] == ["Them", "Me"]
+    assert abs(seen["means"][0] - 4000) < 50
+    assert abs(seen["means"][1] - 12000) < 50
+
+
+def test_labels_must_name_each_stream(tmp_path, monkeypatch):
+    import bootstrap
+
+    source = tmp_path / "call.wav"
+    _pcm(source, 1, 16000, (1000).to_bytes(2, "little", signed=True) * 800)
+    _pretend_ffmpeg(monkeypatch)
+    monkeypatch.setattr(relisten_file, "audio_stream_count", lambda ffmpeg, path: 2)
+
+    def boom(path=None):
+        raise AssertionError("settings were read for a label list that does not match")
+
+    monkeypatch.setattr(bootstrap, "read_settings", boom)
+    assert relisten_file.main([str(source), "--labels", "OnlyMe"]) == 2
+
+
+def test_a_backtick_in_the_vocabulary_is_refused_before_settings_are_read(tmp_path, monkeypatch):
+    import bootstrap
+
+    source = tmp_path / "call.wav"
+    _pcm(source, 1, 16000, (1000).to_bytes(2, "little", signed=True) * 800)
+    _pretend_ffmpeg(monkeypatch)
+    monkeypatch.setattr(relisten_file, "audio_stream_count", lambda ffmpeg, path: 1)
+
+    def boom(path=None):
+        raise AssertionError("settings were read for a vocabulary the header cannot print")
+
+    monkeypatch.setattr(bootstrap, "read_settings", boom)
+    assert relisten_file.main([str(source), "--vocab", "Da`tag,JSON"]) == 2
+
+
+def test_diarize_help_does_not_claim_the_command_installs_it(capsys):
+    with pytest.raises(SystemExit) as caught:
+        relisten_file.parse_args(["--help"])
+    assert caught.value.code == 0
+    text = " ".join(capsys.readouterr().out.split())
+    assert "does not install" in text
+    assert "installed on demand" not in text
 
 
 def test_the_command_hands_the_vocabulary_to_relisten_and_does_not_diarize(tmp_path, monkeypatch,
