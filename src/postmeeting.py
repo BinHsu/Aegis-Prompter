@@ -75,10 +75,12 @@ def build_prompt(session_id="", audio=None, roles=("Speaker (You)", "Participant
         "2. **Meeting sections** — the meeting divided into its topics in order, each with a "
         "short title and two or three lines on what happened in it.",
         "3. **Proofread transcript** — the whole transcript, readable: punctuation and sentence "
-        "boundaries restored, Chinese normalised to Traditional characters, recogniser artefacts "
-        "dropped. Same turns, same order, same speakers.",
+        "boundaries restored. Keep every turn, in the same order, with the same speakers. Where "
+        "a turn is non-speech or unintelligible, replace that content with a marker such as "
+        "〔非語音〕 or 〔不清〕 instead of deleting the turn.",
         "",
-        "Write in the language the meeting was conducted in. Do not translate it.",
+        "All three parts are written in the meeting's language, and Chinese in Traditional "
+        "characters (Taiwan wording). Do not translate.",
         "",
         "### How this file is written",
         "",
@@ -149,7 +151,8 @@ def build_prompt(session_id="", audio=None, roles=("Speaker (You)", "Participant
         "produce a plausible short sentence — measured at 23 of 253 non-speech recordings. A "
         "short, oddly-placed line with no relation to its neighbours is probably this.",
         "- **Nothing was filtered out for you.** Short noise reaches the transcript on purpose, "
-        "so that genuine one-word answers are never lost. Removing it is your job here.",
+        "so that genuine one-word answers are never lost. Keep the turn; if it is non-speech or "
+        "unintelligible, replace its text with a marker instead of deleting it.",
         ("- **Voices were separated by sound, not by name.** Do not invent names, do not split "
          "a label, and do not relabel a line — not even where you are confident. The names you "
          "collect for the report are names that were *spoken*; which line belongs to whom is a "

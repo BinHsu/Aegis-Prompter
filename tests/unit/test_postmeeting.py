@@ -21,6 +21,26 @@ sys.path.insert(0, os.path.join(REPO, "src"))
 import postmeeting  # noqa: E402
 
 
+def test_every_turn_is_kept_and_non_speech_is_marked_rather_than_deleted():
+    """A real run dropped turns because 'artefacts dropped' fought 'same turns'. The instruction
+    is one thing: keep the turn, and replace what was not speech."""
+    prompt = postmeeting.build_prompt()
+    assert "Keep every turn" in prompt
+    assert "〔非語音〕" in prompt and "〔不清〕" in prompt
+    assert "instead of deleting the turn" in prompt
+    assert "artefacts dropped" not in prompt
+    assert "Removing it is your job" not in prompt
+
+
+def test_all_three_parts_use_the_meetings_language_and_traditional_chinese():
+    """Script was named only on the proofread, so the report and the sections came back in
+    whatever the agent defaulted to."""
+    prompt = postmeeting.build_prompt()
+    assert "All three parts are written in the meeting's language" in prompt
+    assert "Traditional characters (Taiwan wording)" in prompt
+    assert "Do not translate" in prompt
+
+
 def test_the_three_deliverables_are_named_in_order():
     """Shortest first: the report is what gets read the moment a meeting ends, the transcript is
     what gets scrolled to afterwards."""

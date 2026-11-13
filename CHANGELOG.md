@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Changed
+- **The post-meeting prompt keeps every turn, and names the script for all three parts.** It used
+  to say both "recogniser artefacts dropped" and "same turns", and a run on a real recording
+  deleted turns to satisfy the first. It now says to keep every turn and to replace non-speech or
+  unintelligible content with a marker such as 〔非語音〕 or 〔不清〕. It also says the report, the
+  meeting sections, and the proofread transcript are all written in the meeting's language, with
+  Chinese in Traditional characters (Taiwan wording). The application still runs nothing itself.
 - **Up to three pre-written cues instead of one.** The knowledge lookup always ranked every note and
   the app only ever showed the first, which threw away most of what it had found: measured, the right
   note is in the top three far more often than it is first. Now up to three appear, strongest first,

@@ -237,16 +237,16 @@ Whether a configured model still exists, and a prompt for finding a replacement.
 - `build_search_prompt()` (L153)
 - `replacement_advice()` (L193)
 
-### `src/postmeeting.py` — 331 lines
+### `src/postmeeting.py` — 334 lines
 
 The post-meeting prompt appended to every session transcript.
 
 - `build_prompt()` (L53)
-- `render_block()` (L237)
-- `extract()` (L258)
-- `audio_paths()` (L271)
-- `list_sessions()` (L288)
-- `read_prompt()` (L325)
+- `render_block()` (L240)
+- `extract()` (L261)
+- `audio_paths()` (L274)
+- `list_sessions()` (L291)
+- `read_prompt()` (L328)
 
 ### `src/relisten.py` — 534 lines
 
@@ -698,47 +698,49 @@ Whether a configured model still exists, and what the operator is handed when it
 - `test_an_empty_model_id_still_produces_a_usable_prompt()` (L208)
 - `test_the_durable_answer_points_at_the_bake_off_not_at_a_list()` (L216)
 
-### `tests/unit/test_postmeeting.py` — 391 lines
+### `tests/unit/test_postmeeting.py` — 411 lines
 
 The post-meeting prompt: what an outside agent is told, and what it is warned about.
 
-- `test_the_three_deliverables_are_named_in_order()` (L24)
-- `test_the_line_format_is_explained()` (L34)
-- `test_the_two_roles_are_explained_as_two_unmixed_tracks()` (L41)
-- `test_the_advisor_lines_are_flagged_as_not_speech()` (L49)
-- `test_the_known_failure_modes_are_named_with_their_measurements()` (L58)
-- `test_speaker_attribution_is_declared_absent_and_forbidden()` (L70)
-- `test_the_rules_forbid_inventing_and_forbid_answering()` (L78)
-- `test_retained_audio_is_named_rather_than_alluded_to()` (L85)
-- `test_no_audio_is_stated_as_a_limit_on_the_answer()` (L97)
-- `test_the_block_is_delimited_by_a_stable_marker()` (L105)
-- `test_extracting_from_a_file_without_the_marker_returns_nothing()` (L116)
-- `test_audio_is_resolved_by_session_id_not_by_sitting_next_to_the_transcript()` (L120)
-- `test_building_the_prompt_touches_no_disk_and_needs_no_model()` (L129)
-- `class _FakeSt` (L148)
+- `test_every_turn_is_kept_and_non_speech_is_marked_rather_than_deleted()` (L24)
+- `test_all_three_parts_use_the_meetings_language_and_traditional_chinese()` (L35)
+- `test_the_three_deliverables_are_named_in_order()` (L44)
+- `test_the_line_format_is_explained()` (L54)
+- `test_the_two_roles_are_explained_as_two_unmixed_tracks()` (L61)
+- `test_the_advisor_lines_are_flagged_as_not_speech()` (L69)
+- `test_the_known_failure_modes_are_named_with_their_measurements()` (L78)
+- `test_speaker_attribution_is_declared_absent_and_forbidden()` (L90)
+- `test_the_rules_forbid_inventing_and_forbid_answering()` (L98)
+- `test_retained_audio_is_named_rather_than_alluded_to()` (L105)
+- `test_no_audio_is_stated_as_a_limit_on_the_answer()` (L117)
+- `test_the_block_is_delimited_by_a_stable_marker()` (L125)
+- `test_extracting_from_a_file_without_the_marker_returns_nothing()` (L136)
+- `test_audio_is_resolved_by_session_id_not_by_sitting_next_to_the_transcript()` (L140)
+- `test_building_the_prompt_touches_no_disk_and_needs_no_model()` (L149)
+- `class _FakeSt` (L168)
   - `_record()`
   - `code()`
   - `text()`
-- `_last_session_renderer()` (L167)
-- `_session()` (L189)
-- `test_a_finished_session_names_its_transcript_and_the_way_out()` (L194)
-- `test_the_extraction_line_is_the_marker_the_file_actually_carries()` (L205)
-- `test_a_session_written_before_the_prompt_existed_says_so()` (L216)
-- `test_retained_audio_is_named_in_the_panel_too()` (L225)
-- `test_nothing_is_shown_before_the_first_session()` (L234)
-- `test_the_panel_reads_history_rather_than_the_engine()` (L240)
-- `test_the_review_pass_is_not_asked_to_place_participant_titles()` (L255)
-- `test_the_transcript_rule_stays_strict()` (L271)
-- `test_the_relistened_variant_does_not_promise_wall_clock_or_a_millisecond_header()` (L288)
-- `test_the_relistened_variant_does_not_send_the_agent_looking_for_advisor_lines()` (L298)
-- `test_the_relistened_variant_states_its_own_flush_not_the_live_one()` (L304)
-- `test_the_relistened_variant_says_simplified_characters_are_expected()` (L312)
-- `test_the_relistened_variant_does_not_claim_material_is_unrecoverable()` (L320)
-- `test_both_variants_still_forbid_inventing_and_relabelling()` (L330)
-- `test_the_external_variant_does_not_describe_two_unmixed_tracks()` (L339)
-- `test_a_separated_external_recording_does_not_deny_the_separation()` (L360)
-- `test_separate_streams_are_not_described_as_one_mixed_role()` (L375)
-- `test_the_external_variant_does_not_claim_the_audio_was_never_kept()` (L388)
+- `_last_session_renderer()` (L187)
+- `_session()` (L209)
+- `test_a_finished_session_names_its_transcript_and_the_way_out()` (L214)
+- `test_the_extraction_line_is_the_marker_the_file_actually_carries()` (L225)
+- `test_a_session_written_before_the_prompt_existed_says_so()` (L236)
+- `test_retained_audio_is_named_in_the_panel_too()` (L245)
+- `test_nothing_is_shown_before_the_first_session()` (L254)
+- `test_the_panel_reads_history_rather_than_the_engine()` (L260)
+- `test_the_review_pass_is_not_asked_to_place_participant_titles()` (L275)
+- `test_the_transcript_rule_stays_strict()` (L291)
+- `test_the_relistened_variant_does_not_promise_wall_clock_or_a_millisecond_header()` (L308)
+- `test_the_relistened_variant_does_not_send_the_agent_looking_for_advisor_lines()` (L318)
+- `test_the_relistened_variant_states_its_own_flush_not_the_live_one()` (L324)
+- `test_the_relistened_variant_says_simplified_characters_are_expected()` (L332)
+- `test_the_relistened_variant_does_not_claim_material_is_unrecoverable()` (L340)
+- `test_both_variants_still_forbid_inventing_and_relabelling()` (L350)
+- `test_the_external_variant_does_not_describe_two_unmixed_tracks()` (L359)
+- `test_a_separated_external_recording_does_not_deny_the_separation()` (L380)
+- `test_separate_streams_are_not_described_as_one_mixed_role()` (L395)
+- `test_the_external_variant_does_not_claim_the_audio_was_never_kept()` (L408)
 
 ### `tests/unit/test_private_dirs_untouched.py` — 62 lines
 
