@@ -22,7 +22,9 @@ What it recovers is specific, and it is exactly what the live path is documented
 
   Biasing lives in this pass and not the live one for the reason it always did: it is text the
   decoder can emit, so it can invent, and this is the pass an operator reads before anyone acts
-  on it (**R37**, **R38**).
+  on it (**R37**, **R38**). An external file has no transcript to harvest, so the caller passes
+  the terms. Either source is printed in the output, because a reader who meets one of those
+  words has to be able to see that it was suggested (**V74**).
 
 **Speaker separation is optional and installed on demand.** `src/diarize.py` owns it, nothing is
 in `requirements.txt`, and the first re-listen that asks for labels is what fetches it — so a
@@ -31,8 +33,9 @@ structurally true for it. The labels it produces are **anonymous and numbered** 
 `與會者2`); who those people are is a separate table at the end that the operator applies
 themselves. See `diarize.py` for why those two are kept apart.
 
-**Nothing here runs on its own.** It is a button in Archive Mode, pressed after a meeting, and it
-loads the model at that point rather than at page load — the same rule the whole product follows
+**Nothing here runs on its own.** It is a button in Archive Mode, pressed after a meeting, and a
+command (`tools/relisten_file.py`) for a recording this application never captured. Either way it
+loads the model when asked rather than at page load — the same rule the whole product follows
 since 2026-08-14: only an explicit action costs anything.
 """
 import datetime
@@ -210,18 +213,53 @@ def track_starts(transcript_path):
     return starts
 
 
+def normalize_vocabulary(vocabulary):
+    """A caller's term list as the same comma-separated text `vocabulary_from` produces.
+
+    Accepts a string (`"Datadog, JSON,TrueWatch"`) or an iterable of terms. Empty entries and
+    repeats are dropped and order is kept, because the order the operator typed is the only
+    priority signal there is.
+    """
+    if not vocabulary:
+        return ""
+    items = vocabulary.split(",") if isinstance(vocabulary, str) else list(vocabulary)
+    seen, ordered = set(), []
+    for item in items:
+        term = " ".join(str(item).split())
+        if term and term not in seen:
+            seen.add(term)
+            ordered.append(term)
+    return ", ".join(ordered)
+
+
 def run(transcript_path, tracks, model_path=None, use_context=True, on_progress=None,
-        diarize=False, hf_token="", diarize_model="", speaker_track="Participant"):
+        diarize=False, hf_token="", diarize_model="", speaker_track="Participant",
+        vocabulary=None, out_path=None, source=None):
     """Re-transcribe the retained audio and write `<transcript>_relistened.md`.
 
     `tracks` maps a role label to a WAV path. Returns a dict; never raises -- this runs after a
     meeting with the real record already safely on disk, so a failure must say so and change
     nothing else.
+
+    **An external recording** is the same pass with `transcript_path=None`: a file this
+    application never captured (`tools/relisten_file.py`). There is then no live transcript to
+    harvest vocabulary from and no recorded timebase, and the output says so instead of
+    describing two tracks that do not exist. `source` names the original file for the header,
+    since the WAV in `tracks` is usually a temporary conversion of it; `out_path` is required
+    in that mode because there is no transcript to sit beside.
+
+    `vocabulary`, when given, replaces the harvested one -- the operator knows the domain terms
+    of a recording better than any regex over it. It feeds the same `initial_prompt` either way.
     """
+    external = not transcript_path
     result = {"output": "", "error": "", "segments": 0, "tracks": {}, "aligned": False,
-              "diarized": False, "voices": 0, "diarize_error": ""}
+              "diarized": False, "voices": 0, "diarize_error": "", "external": external,
+              "vocabulary": "", "vocabulary_source": ""}
     if not tracks:
         result["error"] = "no retained audio for this session"
+        return result
+    if external and not out_path:
+        result["error"] = "an external recording needs an explicit output path"
         return result
 
     try:
@@ -233,14 +271,27 @@ def run(transcript_path, tracks, model_path=None, use_context=True, on_progress=
         return result
 
     model = (model_path or "").strip() or None
-    context = vocabulary_from(transcript_path) if use_context else ""
+    explicit = normalize_vocabulary(vocabulary)
+    if explicit:
+        context, result["vocabulary_source"] = explicit, "operator"
+    elif use_context and not external:
+        context = vocabulary_from(transcript_path)
+        result["vocabulary_source"] = "transcript" if context else ""
+    else:
+        context = ""
+    result["vocabulary"] = context
     # The prompt is bound into the backend here rather than passed per call: `resolve_backend`
     # closes over it, so every segment in this pass is biased identically and no call site can
     # forget. The live path builds its backend with no prompt at all.
-    kind, transcribe = tr.resolve_backend(model or default_model(),
-                                          initial_prompt=context or None)
+    try:
+        kind, transcribe = tr.resolve_backend(model or default_model(),
+                                              initial_prompt=context or None)
+    except Exception as exc:
+        # A refused or unloadable model id. Reported, because this function promises not to raise.
+        result["error"] = f"the model could not be loaded: {type(exc).__name__}: {exc}"
+        return result
 
-    starts = track_starts(transcript_path)
+    starts = {} if external else track_starts(transcript_path)
     result["aligned"] = len(starts) >= len(tracks)
     origin = min(starts.values()) if starts else None
 
@@ -305,10 +356,11 @@ def run(transcript_path, tracks, model_path=None, use_context=True, on_progress=
 
     lines.sort(key=lambda row: row[0])
     result["segments"] = len(lines)
-    out_path = relistened_path(transcript_path)
+    out_path = out_path or relistened_path(transcript_path)
     try:
         with open(out_path, "w", encoding="utf-8") as handle:
-            handle.write(_render(transcript_path, tracks, lines, result, context, model, kind))
+            handle.write(_render(transcript_path, tracks, lines, result, context, model, kind,
+                                 source=source))
     except Exception as exc:
         result["error"] = ((result["error"] + "; ") if result["error"] else "") + \
                           f"could not write {out_path}: {type(exc).__name__}: {exc}"
@@ -320,17 +372,48 @@ def run(transcript_path, tracks, model_path=None, use_context=True, on_progress=
     return result
 
 
-def _render(transcript_path, tracks, lines, result, context, model, kind):
+def _render(transcript_path, tracks, lines, result, context, model, kind, source=None):
     import postmeeting
 
+    external = result.get("external")
+    single = len(tracks) == 1
     out = ["# 🎧 Re-listened transcript", ""]
-    out.append(f"- **Source audio**: {', '.join(sorted(os.path.basename(p) for p in tracks.values()))}")
-    out.append(f"- **Live transcript**: `{os.path.basename(transcript_path)}` — unchanged; this "
-               f"is a second reading of the same hour, not a correction of that one")
+    if external:
+        name = os.path.basename(source) if source else \
+            ", ".join(sorted(os.path.basename(p) for p in tracks.values()))
+        supplied = "one file" if single else "files"
+        out.append(f"- **Source recording**: `{name}` — {supplied} supplied from outside this "
+                   f"application, so there is no live transcript and no recorded timebase")
+    else:
+        out.append(f"- **Source audio**: "
+                   f"{', '.join(sorted(os.path.basename(p) for p in tracks.values()))}")
+        out.append(f"- **Live transcript**: `{os.path.basename(transcript_path)}` — unchanged; "
+                   f"this is a second reading of the same hour, not a correction of that one")
     out.append(f"- **Model**: `{model or 'default'}` ({kind}), segments closed after "
                f"{SILENCE_FLUSH_S} s of silence instead of the live path's 0.4 s")
-    out.append(f"- **Vocabulary bias**: {'from this meeting’s own transcript' if context else 'off'}")
-    if result["aligned"]:
+    # The terms are printed, not merely acknowledged: `initial_prompt` is text the decoder may
+    # copy out verbatim (V74), so a reader who meets one of these words below has to be able to
+    # see that it was suggested before deciding it was heard.
+    if context:
+        origin = ("supplied by the operator" if result.get("vocabulary_source") == "operator"
+                  else "harvested from this meeting’s own transcript")
+        out.append(f"- **Vocabulary bias** ({origin}): `{context}` — the recogniser was primed "
+                   f"with these words and can echo them, so a term from this list in the text "
+                   f"below was suggested as well as heard")
+    else:
+        out.append("- **Vocabulary bias**: off")
+    if external and single:
+        # R2 is a property of audio this application captured. A file from outside has one
+        # stream, and a call in it is already mixed — saying "two tracks" here would be the
+        # retained-session header describing a recording that was never two files.
+        out.append("- **Tracks**: one. If this recording captured a call, both sides are "
+                   "**mixed** in it, so a line's label says nothing about which side spoke "
+                   "(R2 holds only for audio this application captured itself).")
+    elif external:
+        out.append("- ⚠️ **Timebase**: these files were not captured here, so no first-frame "
+                   "instant was recorded. They are aligned as if they began together. "
+                   "**They may not have.** Treat cross-file ordering as approximate.")
+    elif result["aligned"]:
         out.append("- **Timebase**: both tracks aligned on their own recorded first-frame "
                    "instants")
     else:
@@ -338,17 +421,18 @@ def _render(transcript_path, tracks, lines, result, context, model, kind):
         out.append("- ⚠️ **Timebase**: the per-track start times were not found in the live "
                    "transcript, so the two tracks are aligned as if they began together. "
                    "**They did not.** Treat cross-track ordering as approximate.")
+    where = "in this recording" if external else "on the far side"
+    everyone = ("Every line carries the same label, whoever spoke." if external else
+                "Everything from the far side is one label, however many people spoke.")
     if result.get("diarized"):
-        out.append(f"- **Voices separated**: {result['voices']} on the far side, labelled "
+        out.append(f"- **Voices separated**: {result['voices']} {where}, labelled "
                    f"`與會者1`… by **sound alone**. The labels say which lines share a voice and "
                    f"nothing more — who those people are is the table at the end, and this file "
                    f"has not applied it (R12, R13).")
     elif result.get("diarize_error"):
-        out.append(f"- ⚠️ **Voices not separated**: {result['diarize_error']} Everything from the "
-                   f"far side is one label, however many people spoke.")
+        out.append(f"- ⚠️ **Voices not separated**: {result['diarize_error']} {everyone}")
     else:
-        out.append("- **Speaker attribution**: not performed. Everything from the far side is one "
-                   "label, however many people spoke (R12).")
+        out.append(f"- **Speaker attribution**: not performed. {everyone} (R12)")
     for label, info in sorted(result["tracks"].items()):
         if info.get("error"):
             out.append(f"- ❌ **{label}**: {info['error']}")
@@ -375,6 +459,15 @@ def _render(transcript_path, tracks, lines, result, context, model, kind):
     # A prompt for *this* file, not the live one. Attaching the live briefing here told an agent
     # to rejoin fragments from a 0.4 s flush that never happened and to look for advisor lines
     # that do not exist -- while the header above said the flush was 1.2 s. Found 2026-08-17.
-    out.append(postmeeting.render_block(kind=postmeeting.RELISTENED,
-                                        flush_s=SILENCE_FLUSH_S))
+    if external:
+        label = sorted(tracks)[0] if single else "Recording"
+        # The original path, when we have it: the WAV in `tracks` is usually a temporary
+        # conversion and will be gone by the time anyone reads this file.
+        audio = {label: source} if (single and source) else dict(tracks)
+        out.append(postmeeting.render_block(
+            kind=postmeeting.EXTERNAL, flush_s=SILENCE_FLUSH_S, audio=audio,
+            roles=(label, label), speakers_separated=bool(result.get("diarized"))))
+    else:
+        out.append(postmeeting.render_block(kind=postmeeting.RELISTENED,
+                                            flush_s=SILENCE_FLUSH_S))
     return "\n".join(out)

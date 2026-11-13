@@ -329,8 +329,50 @@ def test_the_relistened_variant_does_not_claim_material_is_unrecoverable():
 
 def test_both_variants_still_forbid_inventing_and_relabelling():
     """The rules that do not depend on which file this is."""
-    for kind in (postmeeting.LIVE, postmeeting.RELISTENED):
+    for kind in (postmeeting.LIVE, postmeeting.RELISTENED, postmeeting.EXTERNAL):
         prompt = postmeeting.build_prompt(kind=kind)
         assert "Never invent a figure" in prompt
         assert "do not relabel a line" in prompt
         assert "Report" in prompt and "Proofread transcript" in prompt
+
+
+def test_the_external_variant_does_not_describe_two_unmixed_tracks():
+    """A file this application never captured is one recording. The retained briefing's claim
+    that the two roles were never mixed is false of it, and a false claim is what an agent will
+    treat as the reliable half."""
+    prompt = postmeeting.build_prompt(kind=postmeeting.EXTERNAL, flush_s=1.2,
+                                      audio={"Recording": "/tmp/call.mov"},
+                                      roles=("Recording", "Recording"))
+
+    assert "one role, `Recording`" in prompt
+    assert "both sides are mixed" in prompt
+    assert "/tmp/call.mov" in prompt
+    assert "two separate audio tracks" not in prompt
+    assert "were never mixed" not in prompt
+    assert "Retention was off" not in prompt
+    assert "less rejoining to do than in the live transcript" not in prompt
+    assert "The timestamp is wall clock" not in prompt
+    assert "rather than a wall clock" in prompt
+    assert "offsets from its start" in prompt
+    assert "1.2 s" in prompt
+
+
+def test_a_separated_external_recording_does_not_deny_the_separation():
+    """The header will say voices were separated. The briefing must not tell an agent they were
+    not — that contradiction is how a proofread flattens the labels."""
+    prompt = postmeeting.build_prompt(kind=postmeeting.EXTERNAL, speakers_separated=True,
+                                      roles=("Recording", "Recording"),
+                                      audio={"Recording": "/tmp/call.mov"})
+
+    assert "separated by sound" in prompt
+    assert "both sides are mixed" in prompt
+    assert "do not relabel a line" in prompt
+    assert "never separated" not in prompt
+    assert "one role" not in prompt
+    assert "/tmp/call.mov" in prompt
+
+
+def test_the_external_variant_does_not_claim_the_audio_was_never_kept():
+    prompt = postmeeting.build_prompt(kind=postmeeting.EXTERNAL)
+    assert "Retention was off" not in prompt
+    assert "### The source recording" in prompt

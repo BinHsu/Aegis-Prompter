@@ -378,3 +378,127 @@ def test_the_appended_prompt_describes_the_relistened_file_not_the_live_one(tmp_
     assert "offset from the start of the recording" in prompt
     # And the header and the prompt agree about the flush, which is what failed.
     assert f"closed after {relisten.SILENCE_FLUSH_S} s of silence" in written
+
+
+def test_vocabulary_keeps_the_order_it_was_given_and_drops_blanks_and_repeats():
+    assert relisten.normalize_vocabulary("Datadog, JSON,TrueWatch, JSON, , pipeline") == \
+        "Datadog, JSON, TrueWatch, pipeline"
+    assert relisten.normalize_vocabulary(["JSON", " JSON", "JSON", ""]) == "JSON"
+    assert relisten.normalize_vocabulary("  \n ") == ""
+    assert relisten.normalize_vocabulary(None) == ""
+
+
+def test_an_explicit_vocabulary_replaces_the_harvested_one_and_is_printed(tmp_path, stub_asr,
+                                                                        monkeypatch):
+    """The harvested list is a guess. When the operator names the terms, those are the ones the
+    decoder sees, and the file says so — `initial_prompt` can be copied out verbatim (V74)."""
+    monkeypatch.setattr(relisten, "vocabulary_from", lambda path, limit=40: "HarvestedTerm")
+    transcript = tmp_path / "Meeting_S11.md"
+    transcript.write_text(TRANSCRIPT, encoding="utf-8")
+    mic = _write(tmp_path / "Meeting_S11_mic.wav", _tone(1.0))
+
+    result = relisten.run(str(transcript), {"Speaker (You)": mic},
+                          vocabulary="Datadog, JSON, Datadog")
+    written = open(result["output"], encoding="utf-8").read()
+
+    assert stub_asr.prompts == ["Datadog, JSON"]
+    assert result["vocabulary"] == "Datadog, JSON"
+    assert result["vocabulary_source"] == "operator"
+    assert "supplied by the operator" in written
+    assert "`Datadog, JSON`" in written
+    assert "HarvestedTerm" not in written
+
+
+def test_a_blank_vocabulary_still_harvests_a_retained_session(tmp_path, stub_asr, monkeypatch):
+    monkeypatch.setattr(relisten, "vocabulary_from", lambda path, limit=40: "Aegis, Hualien")
+    transcript = tmp_path / "Meeting_S12.md"
+    transcript.write_text(TRANSCRIPT, encoding="utf-8")
+    mic = _write(tmp_path / "Meeting_S12_mic.wav", _tone(1.0))
+
+    relisten.run(str(transcript), {"Speaker (You)": mic}, vocabulary=" , ")
+
+    assert stub_asr.prompts == ["Aegis, Hualien"]
+
+
+def test_an_external_file_states_the_vocabulary_and_does_not_invent_two_tracks(tmp_path, stub_asr):
+    """The retained header talks about two tracks and a missing timebase. A single file from
+    outside this application has neither, and saying so would be a claim about a recording that
+    was never captured here."""
+    mic = _write(tmp_path / "input.wav", _tone(1.0))
+    out = tmp_path / "call_relistened.md"
+
+    result = relisten.run(None, {"Recording": mic}, vocabulary="Datadog, JSON, TrueWatch",
+                          out_path=str(out), source=str(tmp_path / "call.mov"))
+    written = out.read_text(encoding="utf-8")
+
+    assert result["error"] == ""
+    assert result["external"] is True
+    assert result["output"] == str(out)
+    assert stub_asr.prompts == ["Datadog, JSON, TrueWatch"]
+    assert "call.mov" in written
+    assert "supplied by the operator" in written
+    assert "`Datadog, JSON, TrueWatch`" in written
+    assert "(stub)" in written
+    assert "one file supplied from outside" in written
+    assert "**mixed**" in written
+    assert "Live transcript" not in written
+    assert "both tracks" not in written
+    assert "They did not" not in written
+    assert "aligned as if they began together" not in written
+    assert "two separate audio tracks" not in written
+    assert "were never mixed" not in written
+    assert "Retention was off" not in written
+    assert "one role, `Recording`" in written
+
+
+def test_an_external_file_without_vocabulary_is_unbiased(tmp_path, stub_asr):
+    mic = _write(tmp_path / "input.wav", _tone(1.0))
+    out = tmp_path / "memo_relistened.md"
+
+    result = relisten.run(None, {"Recording": mic}, out_path=str(out),
+                          source=str(tmp_path / "memo.aiff"))
+    written = out.read_text(encoding="utf-8")
+
+    assert stub_asr.prompts == [None]
+    assert result["vocabulary"] == ""
+    assert "- **Vocabulary bias**: off" in written
+
+
+def test_an_external_recording_without_an_output_path_is_refused(tmp_path):
+    result = relisten.run(None, {"Recording": str(tmp_path / "nope.wav")})
+    assert "explicit output path" in result["error"]
+    assert result["output"] == ""
+
+
+def test_a_diarized_external_file_does_not_tell_the_agent_separation_never_happened(tmp_path):
+    result = {
+        "external": True, "aligned": False, "diarized": True, "voices": 2,
+        "diarize_error": "", "error": "", "vocabulary_source": "",
+        "tracks": {"Recording": {"segments": 1, "seconds": 1.0}},
+    }
+    written = relisten._render(
+        None, {"Recording": str(tmp_path / "in.wav")},
+        [(0.0, "與會者1", "hello")], result, "", "default", "stub",
+        source=str(tmp_path / "call.mov"))
+    prompt = written.split("<!-- aegis:post-meeting-prompt -->", 1)[1]
+
+    assert "Voices separated**: 2" in written
+    assert "separated by sound" in prompt
+    assert "never separated" not in prompt
+    assert "one role" not in prompt
+
+
+def test_an_unloadable_model_is_reported_and_writes_nothing(tmp_path, monkeypatch):
+    import transcriber as tr
+
+    def boom(model_path, initial_prompt=None):
+        raise ValueError("refused")
+
+    monkeypatch.setattr(tr, "resolve_backend", boom)
+    out = tmp_path / "call_relistened.md"
+    result = relisten.run(None, {"Recording": str(tmp_path / "nope.wav")},
+                          out_path=str(out), vocabulary="JSON")
+
+    assert "could not be loaded" in result["error"]
+    assert result["output"] == ""
+    assert not out.exists()

@@ -42,6 +42,12 @@ We often witness two highly asymmetric, high-pressure meeting scenarios:
   Every session ends with a prompt block telling any agent how to read the file, how it is lossy, and what to produce — a report, the meeting's topics, and a proofread transcript. Copy it into whatever you use. The app runs nothing itself, so post-processing costs it no dependency and breaks no guarantee.
 * **Re-listen afterwards, and optionally tell the voices apart**:
   With the audio kept, one button re-runs recognition over it — longer pauses allowed, so sentences arrive whole, and the material voice detection threw away gets read again. Optionally it also separates the far side by **voice**: lines that share a speaker get `與會者1`, `與會者2` — sound alone, never names. A guessed name-to-label table goes at the end **with the evidence beside each row**, for you to check and apply yourself. Nothing is applied for you, so a wrong guess is visible before it is written anywhere. That part installs itself only when you first ask for it, and tells you what it costs first.
+
+  A recording this application never captured — a screen recording, a voice memo — is the same pass from the command line. It converts with `ffmpeg`, stays offline, and prints the terms it was primed with, because the recogniser can echo them:
+
+  ```zsh
+  .venv/bin/python tools/relisten_file.py call.mov --vocab "Datadog, JSON, TrueWatch, pipeline"
+  ```
 * **Optional dual-track recording, and it tells you what it did**:
   Armed on the pre-flight panel, off until you turn it on, then sticky — because the meeting that later turns out to matter is the one nobody armed. It writes two lossless WAVs per session, one per track, tapped from the raw stream **before** voice detection, so what the transcript discarded is still on disk. The session log states whether audio was kept and where, so "recorded and later deleted" is never mistaken for "never recorded". About 0.23 GB per hour for both tracks.
 * **100% Offline & Private**: Zero telemetry, and nothing leaves the machine on its own. The advisor slots are the only door out, they are empty until you type a host into them, they are off until you arm them per meeting, and the panel says so at the moment you do. Point them at Ollama or a local Qdrant and the product is still entirely offline; point them at a cloud endpoint and you have decided that, deliberately.

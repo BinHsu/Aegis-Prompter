@@ -44,10 +44,14 @@ HEADING = "## ✂︎ Post-meeting prompt — copy everything below into your own
 # contradicting itself is read as one of the two being a typo.
 LIVE = "live"
 RELISTENED = "relistened"
+# A recording this application never captured, re-listened through `tools/relisten_file.py`. It
+# is a re-listened file in every respect but one, and that one is the claim the other two kinds
+# rest on: it is a single track, so if it held a call, both sides are mixed in it.
+EXTERNAL = "external"
 
 
 def build_prompt(session_id="", audio=None, roles=("Speaker (You)", "Participant"),
-                 kind=LIVE, flush_s=None):
+                 kind=LIVE, flush_s=None, speakers_separated=False):
     """The briefing an outside agent needs, plus the three deliverables. Pure: no I/O.
 
     `audio` is the `{track: path}` mapping retention produced, or empty when the operator did not
@@ -59,10 +63,11 @@ def build_prompt(session_id="", audio=None, roles=("Speaker (You)", "Participant
     silence flush, and whether the audio is a separate artefact or the thing this was made from.
     """
     speaker, participant = roles
-    relistened = kind == RELISTENED
+    external = kind == EXTERNAL
+    relistened = kind in (RELISTENED, EXTERNAL)
     lines = [
-        "You are given the transcript of a live hearing above. Produce three things, in this "
-        "order, and nothing else.",
+        (f"You are given the transcript of a {'recording' if external else 'live hearing'} "
+         "above. Produce three things, in this order, and nothing else."),
         "",
         "1. **Report** — what the meeting was about, what was decided, what was left open, and "
         "what anyone was asked to do. For someone who was not in the room.",
@@ -82,11 +87,30 @@ def build_prompt(session_id="", audio=None, roles=("Speaker (You)", "Participant
          if relistened else
          "- Every turn is one line: `**[HH:MM:SS] Role**: text`. The timestamp is wall clock, and "
          "the file header carries the session start to the millisecond."),
-        f"- There are exactly two roles. `{speaker}` is the operator's own microphone. "
-        f"`{participant}` is everything the machine played — the remote parties, and anything "
-        "else audible from the computer.",
-        "- **They are two separate audio tracks and were never mixed.** A line's role is "
-        "therefore reliable: it is which device the audio came from, not a guess from the words.",
+    ]
+    if external and speakers_separated:
+        lines += [
+            "- This is one recording made outside this application. **If it captured a call, "
+            "both sides are mixed in it.** Voices were then separated by sound; the header "
+            "names those labels. A label is not a side of the call and not a person's name. "
+            "Do not infer sides from it.",
+        ]
+    elif external:
+        lines += [
+            f"- There is one role, `{participant}`: a single recording made outside this "
+            "application. **If it captured a call, both sides are mixed in it**, so the label "
+            "says nothing about who spoke. Do not infer sides from it.",
+        ]
+    else:
+        lines += [
+            f"- There are exactly two roles. `{speaker}` is the operator's own microphone. "
+            f"`{participant}` is everything the machine played — the remote parties, and "
+            "anything else audible from the computer.",
+            "- **They are two separate audio tracks and were never mixed.** A line's role is "
+            "therefore reliable: it is which device the audio came from, not a guess from the "
+            "words.",
+        ]
+    lines += [
         ("- There are no advisor lines here. This file is speech and nothing else."
          if relistened else
          "- Lines beginning `> **⚡ Staff override**`, `> **🛡️ Retrieved cue**` or "
@@ -96,10 +120,15 @@ def build_prompt(session_id="", audio=None, roles=("Speaker (You)", "Participant
         "",
         "### What the transcript is missing, and how it is wrong",
         "",
-        "This is automatic speech recognition, captured live. The failures are known and "
-        "specific, so read a defect as a defect rather than as something a person did:",
+        (f"This is automatic speech recognition{'' if external else ', captured live'}. The "
+         "failures are known and specific, so read a defect as a defect rather than as something "
+         "a person did:"),
         "",
         (f"- **Sentences are mostly whole.** A segment closes after {flush_s or 1.2} s of "
+         "silence, so a sentence spoken with a breath in it usually arrives as one line. "
+         "Check rather than assume."
+         if external else
+         f"- **Sentences are mostly whole.** A segment closes after {flush_s or 1.2} s of "
          "silence here, three times the live path's, because nobody was waiting for this one. "
          "There is less rejoining to do than in the live transcript — but check rather than "
          "assume."
@@ -112,12 +141,21 @@ def build_prompt(session_id="", audio=None, roles=("Speaker (You)", "Participant
         "short, oddly-placed line with no relation to its neighbours is probably this.",
         "- **Nothing was filtered out for you.** Short noise reaches the transcript on purpose, "
         "so that genuine one-word answers are never lost. Removing it is your job here.",
-        "- **Individual speakers were never separated.** Everything from the far side is labelled "
-        f"`{participant}`, however many people were talking. **Do not invent names, do not split "
-        "the label, and do not relabel a line** — not even where you are confident. The names "
-        "you collect for the report are names that were *spoken*; which line belongs to whom is "
-        "a different question and nothing here can answer it.",
-        ("- **This is the recovery pass, so less was discarded than in the live transcript** — "
+        ("- **Voices were separated by sound, not by name.** Do not invent names, do not split "
+         "a label, and do not relabel a line — not even where you are confident. The names you "
+         "collect for the report are names that were *spoken*; which line belongs to whom is a "
+         "different question and nothing here can answer it."
+         if external and speakers_separated else
+         "- **Individual speakers were never separated.** Everything "
+         f"{'in the recording' if external else 'from the far side'} is labelled "
+         f"`{participant}`, however many people were talking. **Do not invent names, do not split "
+         "the label, and do not relabel a line** — not even where you are confident. The names "
+         "you collect for the report are names that were *spoken*; which line belongs to whom is "
+         "a different question and nothing here can answer it."),
+        ("- **Whatever voice detection rejected is not here.** Silence judgements and the "
+         "minimum duration filter drop material; the recording above still has it."
+         if external else
+         "- **This is the recovery pass, so less was discarded than in the live transcript** — "
          "it was read from audio captured before voice detection ran. What voice detection still "
          "rejects here is gone all the same."
          if relistened else
@@ -129,7 +167,20 @@ def build_prompt(session_id="", audio=None, roles=("Speaker (You)", "Participant
                      "Traditional is part of what is being asked for above; it is not a sign "
                      "that anything went wrong.")
 
-    if audio:
+    if external:
+        # Never the retained-session "retention was off" block. This file was made from a
+        # recording; claiming otherwise tells the reader the audio is gone.
+        lines += ["", "### The source recording", ""]
+        if audio:
+            lines += [f"- `{path}`" for _track, path in sorted(audio.items())]
+            lines += [""]
+        else:
+            lines += ["Its path was not recorded with this transcript.", ""]
+        lines += [
+            "If a passage matters and the text is unreadable, the recording can settle it. "
+            "Timestamps in the transcript are offsets from its start.",
+        ]
+    elif audio:
         lines += [
             "",
             "### The audio was kept",
@@ -169,7 +220,8 @@ def build_prompt(session_id="", audio=None, roles=("Speaker (You)", "Participant
     return "\n".join(lines)
 
 
-def render_block(session_id="", audio=None, kind=LIVE, flush_s=None):
+def render_block(session_id="", audio=None, kind=LIVE, flush_s=None,
+                 roles=("Speaker (You)", "Participant"), speakers_separated=False):
     """The whole appendix, marker included, ready to write at the end of the transcript.
 
     `kind` must match the file this is appended to. See `build_prompt`.
@@ -181,7 +233,8 @@ def render_block(session_id="", audio=None, kind=LIVE, flush_s=None):
         MARKER,
         HEADING,
         "",
-        build_prompt(session_id=session_id, audio=audio, kind=kind, flush_s=flush_s),
+        build_prompt(session_id=session_id, audio=audio, kind=kind, flush_s=flush_s,
+                     roles=roles, speakers_separated=speakers_separated),
         "",
     ])
 

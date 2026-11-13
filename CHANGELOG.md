@@ -29,6 +29,15 @@ All notable changes to this project are documented in this file.
   was deleted: type a URL into settings and it comes back.
 
 ### Added
+- **Re-listen a file that was never a session.** `tools/relisten_file.py` takes an audio or video
+  file, converts it with `ffmpeg` into the 16 kHz mono WAV the re-listening pass already reads,
+  and runs that pass. `--vocab` supplies domain terms through the same `initial_prompt` a retained
+  session gets from its own transcript, and the written header lists those terms because the
+  recogniser can echo a prompt. The header describes one external recording. It does not talk
+  about two tracks or a missing timebase. Voice separation stays the optional `--diarize` flag,
+  off unless asked for. A file with more than one audio stream is refused, and so is a file whose
+  stream list cannot be read, rather than transcribed as if one stream were the whole recording.
+  When separation does run, the briefing at the end of the file says so too.
 - **Re-listen a kept meeting, and optionally tell the voices apart.** One button re-runs speech
   recognition over the retained audio with a longer silence flush, so sentences arrive whole
   instead of cut at every pause, and the material voice detection discarded gets read again — the
