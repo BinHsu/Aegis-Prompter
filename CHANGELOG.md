@@ -5,6 +5,11 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Changed
+- **`--out` on `tools/relisten_file.py` writes the file you named.** A path such as
+  `name.transcript.txt` was created as a directory, and `<stem>_relistened.md` was written inside
+  it. A path is a directory only when it already is one, or when it ends with `/`. Anything else
+  is the file itself, and missing parent directories are created. The path printed at the end is
+  that file.
 - **The post-meeting prompt keeps every turn, and names the script for all three parts.** It used
   to say both "recogniser artefacts dropped" and "same turns", and a run on a real recording
   deleted turns to satisfy the first. It now says to keep every turn and to replace non-speech or
