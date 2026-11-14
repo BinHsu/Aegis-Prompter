@@ -24,7 +24,13 @@ Start once to fetch it.
 
 Usage:
     .venv/bin/python tools/relisten_file.py call.mov --vocab "Datadog, JSON, TrueWatch, pipeline"
-    .venv/bin/python tools/relisten_file.py memo.m4a --out ~/notes --model mlx-community/whisper-large-v3-turbo
+    .venv/bin/python tools/relisten_file.py memo.m4a --out ~/notes/memo.transcript.txt
+    .venv/bin/python tools/relisten_file.py memo.m4a --out ~/notes/ --model mlx-community/whisper-large-v3-turbo
+
+`--out` is the file to write, and missing parent directories are created. It is a directory
+only when that path already is one, or when it ends with `/`; the file is then
+`<stem>_relistened.md` inside it. An existing file is never overwritten (the run numbers a new
+one beside it), and `--out` cannot name the input.
 """
 import argparse
 import os
@@ -52,6 +58,63 @@ def output_path(input_path, out_dir):
     number = 2
     while os.path.exists(candidate):
         candidate = os.path.join(out_dir, f"{stem}{relisten.RELISTEN_SUFFIX}-{number}.md")
+        number += 1
+    return candidate
+
+
+def destination(input_path, out_arg):
+    """The markdown file this run writes. Returns `(path, error)`.
+
+    No `--out` writes `<stem>_relistened.md` beside the input. `--out` is a directory when that
+    path already is one, or when the argument ends with a slash, and the file is then named
+    inside it. Any other `--out` is the file itself: a path like `name.transcript.txt` is not
+    created as a directory, and missing parents are created so the file can be written there.
+
+    A named file that already exists is not overwritten: the run writes `name-2.txt` (then `-3`…)
+    beside it, as the directory form does, so an earlier reading survives a re-run. `--out` naming
+    the input itself is refused, since writing there would replace the recording with its text.
+    """
+    if not out_arg:
+        return output_path(input_path, os.path.dirname(input_path)), ""
+
+    raw = os.path.expanduser(out_arg)
+    as_directory = raw.endswith("/") or raw.endswith(os.sep)
+    resolved = os.path.abspath(raw)
+    if as_directory or os.path.isdir(resolved):
+        try:
+            os.makedirs(resolved, exist_ok=True)
+        except OSError as exc:
+            return "", f"--out is not a directory that can be created: {resolved} ({exc})"
+        return output_path(input_path, resolved), ""
+
+    if _same_file(resolved, input_path):
+        return "", f"--out is the input file; writing there would replace the recording: {resolved}"
+
+    parent = os.path.dirname(resolved)
+    try:
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+    except OSError as exc:
+        return "", f"--out's directory could not be created: {parent} ({exc})"
+    return _unused(resolved), ""
+
+
+def _same_file(path, input_path):
+    if os.path.abspath(path) == os.path.abspath(input_path):
+        return True
+    try:
+        return os.path.samefile(path, input_path)
+    except OSError:
+        return False
+
+
+def _unused(path):
+    """`path` if nothing is there yet, else the first free `<base>-N<ext>` beside it."""
+    base, ext = os.path.splitext(path)
+    candidate = path
+    number = 2
+    while os.path.exists(candidate):
+        candidate = f"{base}-{number}{ext}"
         number += 1
     return candidate
 
@@ -118,7 +181,10 @@ def parse_args(argv):
                         help="comma-separated domain terms to prime recognition with. "
                              "A term cannot contain a backtick")
     parser.add_argument("--out", default="",
-                        help="directory for the markdown (default: next to the input)")
+                        help="file to write. A path that already is a directory, or that ends "
+                             "with /, receives <stem>_relistened.md instead. An existing file is "
+                             "kept and the run writes <name>-2 beside it; the input cannot be "
+                             "named (default: <stem>_relistened.md next to the input)")
     parser.add_argument("--model", default="",
                         help="ASR model id (default: ASR_MODEL from settings, else the shipped one)")
     parser.add_argument("--label", default="Recording",
@@ -159,12 +225,10 @@ def main(argv=None):
     if "`" in args.vocab:
         print("❌ a vocabulary term cannot contain a backtick", file=sys.stderr)
         return 2
-    out_dir = os.path.abspath(os.path.expanduser(args.out)) if args.out else \
-        os.path.dirname(input_path)
-    if os.path.isfile(out_dir):
-        print(f"❌ --out is a file, not a directory: {out_dir}", file=sys.stderr)
+    target, out_error = destination(input_path, args.out)
+    if out_error:
+        print(f"❌ {out_error}", file=sys.stderr)
         return 2
-    os.makedirs(out_dir, exist_ok=True)
 
     import bootstrap
     settings = bootstrap.read_settings()
@@ -186,7 +250,6 @@ def main(argv=None):
               f"that is cached.", file=sys.stderr)
         return 2
 
-    target = output_path(input_path, out_dir)
     # One mixed stream can still be split by voice. Several streams are already one side each;
     # diarizing them would invent a second split the container already made.
     diarize = args.diarize and len(labels) == 1

@@ -148,6 +148,7 @@ def test_two_audio_streams_reach_relisten_as_two_tracks(tmp_path, monkeypatch):
 
     monkeypatch.setattr(relisten, "run", fake_run)
     out = tmp_path / "notes"
+    out.mkdir()
     assert relisten_file.main([str(dual), "--out", str(out), "--diarize"]) == 0
     assert seen["tracks"] == ["Stream 1", "Stream 2"]
     assert seen["kwargs"]["track_order"] == ["Stream 1", "Stream 2"]
@@ -230,6 +231,7 @@ def test_the_command_hands_the_vocabulary_to_relisten_and_does_not_diarize(tmp_p
 
     monkeypatch.setattr(relisten, "run", fake_run)
     out = tmp_path / "notes"
+    out.mkdir()
     code = relisten_file.main([
         str(source), "--vocab", "Datadog, JSON", "--out", str(out),
         "--model", "mlx-community/whisper-large-v3-turbo",
@@ -309,3 +311,125 @@ def test_an_unconfigured_machine_stops_before_offline_or_conversion(tmp_path, mo
 
     monkeypatch.setattr(bootstrap, "enforce_offline", offline)
     assert relisten_file.main([str(source)]) == 2
+
+
+def _stub_one_stream(monkeypatch, tmp_path):
+    """A one-stream file whose recognition is replaced, so `--out` can be asserted exactly."""
+    source = tmp_path / "call.wav"
+    _pcm(source, 1, 16000, (1000).to_bytes(2, "little", signed=True) * 800)
+    _pretend_ffmpeg(monkeypatch)
+    _settings(monkeypatch, tmp_path)
+    monkeypatch.setattr(relisten_file, "audio_stream_count", lambda ffmpeg, path: 1)
+    monkeypatch.setattr(relisten_file, "convert", lambda ffmpeg, src, wav: "")
+    seen = {}
+
+    def fake_run(transcript_path, tracks, **kwargs):
+        seen["kwargs"] = kwargs
+        return {"output": kwargs["out_path"], "error": "", "segments": 1,
+                "vocabulary": "", "diarize_error": ""}
+
+    monkeypatch.setattr(relisten, "run", fake_run)
+    return source, seen
+
+
+@pytest.mark.parametrize("name", ["name.transcript.txt", "name.md"])
+def test_out_naming_a_file_writes_that_file(tmp_path, monkeypatch, capsys, name):
+    """A path that does not exist yet is the file, not a directory created to hold another name."""
+    source, seen = _stub_one_stream(monkeypatch, tmp_path)
+    target = tmp_path / name
+
+    assert relisten_file.main([str(source), "--out", str(target)]) == 0
+
+    expected = os.path.abspath(target)
+    assert seen["kwargs"]["out_path"] == expected
+    assert not os.path.isdir(expected)
+    assert expected in capsys.readouterr().out
+    assert not expected.endswith(f"{os.sep}call_relistened.md")
+
+
+def test_out_that_is_already_a_directory_names_the_file_inside_it(tmp_path, monkeypatch, capsys):
+    source, seen = _stub_one_stream(monkeypatch, tmp_path)
+    out = tmp_path / "notes"
+    out.mkdir()
+
+    assert relisten_file.main([str(source), "--out", str(out)]) == 0
+
+    expected = os.path.join(os.path.abspath(out), "call_relistened.md")
+    assert seen["kwargs"]["out_path"] == expected
+    assert expected in capsys.readouterr().out
+
+
+def test_out_ending_in_a_slash_is_a_directory_even_when_it_does_not_exist(tmp_path, monkeypatch,
+                                                                        capsys):
+    source, seen = _stub_one_stream(monkeypatch, tmp_path)
+    out = tmp_path / "fresh"
+    assert not out.exists()
+
+    assert relisten_file.main([str(source), "--out", str(out) + "/"]) == 0
+
+    assert out.is_dir()
+    expected = os.path.join(os.path.abspath(out), "call_relistened.md")
+    assert seen["kwargs"]["out_path"] == expected
+    assert expected in capsys.readouterr().out
+
+
+def test_out_file_creates_a_missing_parent_and_does_not_become_a_directory(tmp_path, monkeypatch,
+                                                                         capsys):
+    source, seen = _stub_one_stream(monkeypatch, tmp_path)
+    target = tmp_path / "missing" / "deeper" / "name.transcript.txt"
+    assert not target.parent.exists()
+
+    assert relisten_file.main([str(source), "--out", str(target)]) == 0
+
+    expected = os.path.abspath(target)
+    assert seen["kwargs"]["out_path"] == expected
+    assert target.parent.is_dir()
+    assert not os.path.isdir(expected)
+    assert expected in capsys.readouterr().out
+
+
+def test_out_naming_an_existing_file_keeps_it_and_writes_a_numbered_one(tmp_path, monkeypatch,
+                                                                         capsys):
+    """A re-run must not erase the earlier reading, in the file form as in the directory form."""
+    source, seen = _stub_one_stream(monkeypatch, tmp_path)
+    target = tmp_path / "name.transcript.txt"
+    target.write_text("earlier reading", encoding="utf-8")
+    (tmp_path / "name.transcript-2.txt").write_text("second reading", encoding="utf-8")
+
+    assert relisten_file.main([str(source), "--out", str(target)]) == 0
+
+    expected = os.path.abspath(tmp_path / "name.transcript-3.txt")
+    assert seen["kwargs"]["out_path"] == expected
+    assert target.read_text(encoding="utf-8") == "earlier reading"
+    assert expected in capsys.readouterr().out
+
+
+def test_out_naming_a_fresh_file_is_used_unnumbered(tmp_path):
+    """The boundary below the one above: nothing there yet, so no -2."""
+    source = tmp_path / "call.wav"
+    source.write_bytes(b"x")
+    path, error = relisten_file.destination(str(source), str(tmp_path / "name.transcript.txt"))
+    assert error == ""
+    assert path == os.path.abspath(tmp_path / "name.transcript.txt")
+
+
+@pytest.mark.parametrize("spelling", ["same", "relative", "symlink"])
+def test_out_naming_the_input_is_refused_and_the_recording_is_untouched(tmp_path, monkeypatch,
+                                                                       capsys, spelling):
+    source, seen = _stub_one_stream(monkeypatch, tmp_path)
+    before = source.read_bytes()
+    if spelling == "same":
+        out = str(source)
+    elif spelling == "relative":
+        monkeypatch.chdir(tmp_path)
+        out = os.path.join(".", source.name)
+    else:
+        link = tmp_path / "alias.wav"
+        link.symlink_to(source)
+        out = str(link)
+
+    assert relisten_file.main([str(source), "--out", out]) == 2
+
+    assert "kwargs" not in seen
+    assert source.read_bytes() == before
+    assert "input file" in capsys.readouterr().err
