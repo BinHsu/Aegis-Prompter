@@ -386,3 +386,50 @@ def test_out_file_creates_a_missing_parent_and_does_not_become_a_directory(tmp_p
     assert target.parent.is_dir()
     assert not os.path.isdir(expected)
     assert expected in capsys.readouterr().out
+
+
+def test_out_naming_an_existing_file_keeps_it_and_writes_a_numbered_one(tmp_path, monkeypatch,
+                                                                         capsys):
+    """A re-run must not erase the earlier reading, in the file form as in the directory form."""
+    source, seen = _stub_one_stream(monkeypatch, tmp_path)
+    target = tmp_path / "name.transcript.txt"
+    target.write_text("earlier reading", encoding="utf-8")
+    (tmp_path / "name.transcript-2.txt").write_text("second reading", encoding="utf-8")
+
+    assert relisten_file.main([str(source), "--out", str(target)]) == 0
+
+    expected = os.path.abspath(tmp_path / "name.transcript-3.txt")
+    assert seen["kwargs"]["out_path"] == expected
+    assert target.read_text(encoding="utf-8") == "earlier reading"
+    assert expected in capsys.readouterr().out
+
+
+def test_out_naming_a_fresh_file_is_used_unnumbered(tmp_path):
+    """The boundary below the one above: nothing there yet, so no -2."""
+    source = tmp_path / "call.wav"
+    source.write_bytes(b"x")
+    path, error = relisten_file.destination(str(source), str(tmp_path / "name.transcript.txt"))
+    assert error == ""
+    assert path == os.path.abspath(tmp_path / "name.transcript.txt")
+
+
+@pytest.mark.parametrize("spelling", ["same", "relative", "symlink"])
+def test_out_naming_the_input_is_refused_and_the_recording_is_untouched(tmp_path, monkeypatch,
+                                                                       capsys, spelling):
+    source, seen = _stub_one_stream(monkeypatch, tmp_path)
+    before = source.read_bytes()
+    if spelling == "same":
+        out = str(source)
+    elif spelling == "relative":
+        monkeypatch.chdir(tmp_path)
+        out = os.path.join(".", source.name)
+    else:
+        link = tmp_path / "alias.wav"
+        link.symlink_to(source)
+        out = str(link)
+
+    assert relisten_file.main([str(source), "--out", out]) == 2
+
+    assert "kwargs" not in seen
+    assert source.read_bytes() == before
+    assert "input file" in capsys.readouterr().err

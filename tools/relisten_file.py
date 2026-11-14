@@ -29,7 +29,8 @@ Usage:
 
 `--out` is the file to write, and missing parent directories are created. It is a directory
 only when that path already is one, or when it ends with `/`; the file is then
-`<stem>_relistened.md` inside it.
+`<stem>_relistened.md` inside it. An existing file is never overwritten (the run numbers a new
+one beside it), and `--out` cannot name the input.
 """
 import argparse
 import os
@@ -68,6 +69,10 @@ def destination(input_path, out_arg):
     path already is one, or when the argument ends with a slash, and the file is then named
     inside it. Any other `--out` is the file itself: a path like `name.transcript.txt` is not
     created as a directory, and missing parents are created so the file can be written there.
+
+    A named file that already exists is not overwritten: the run writes `name-2.txt` (then `-3`…)
+    beside it, as the directory form does, so an earlier reading survives a re-run. `--out` naming
+    the input itself is refused, since writing there would replace the recording with its text.
     """
     if not out_arg:
         return output_path(input_path, os.path.dirname(input_path)), ""
@@ -82,13 +87,36 @@ def destination(input_path, out_arg):
             return "", f"--out is not a directory that can be created: {resolved} ({exc})"
         return output_path(input_path, resolved), ""
 
+    if _same_file(resolved, input_path):
+        return "", f"--out is the input file; writing there would replace the recording: {resolved}"
+
     parent = os.path.dirname(resolved)
     try:
         if parent:
             os.makedirs(parent, exist_ok=True)
     except OSError as exc:
         return "", f"--out's directory could not be created: {parent} ({exc})"
-    return resolved, ""
+    return _unused(resolved), ""
+
+
+def _same_file(path, input_path):
+    if os.path.abspath(path) == os.path.abspath(input_path):
+        return True
+    try:
+        return os.path.samefile(path, input_path)
+    except OSError:
+        return False
+
+
+def _unused(path):
+    """`path` if nothing is there yet, else the first free `<base>-N<ext>` beside it."""
+    base, ext = os.path.splitext(path)
+    candidate = path
+    number = 2
+    while os.path.exists(candidate):
+        candidate = f"{base}-{number}{ext}"
+        number += 1
+    return candidate
 
 
 _AUDIO_STREAM = re.compile(r"^\s*Stream #\d+:\d+.*:\s*Audio:", re.MULTILINE)
@@ -154,8 +182,9 @@ def parse_args(argv):
                              "A term cannot contain a backtick")
     parser.add_argument("--out", default="",
                         help="file to write. A path that already is a directory, or that ends "
-                             "with /, receives <stem>_relistened.md instead "
-                             "(default: that file next to the input)")
+                             "with /, receives <stem>_relistened.md instead. An existing file is "
+                             "kept and the run writes <name>-2 beside it; the input cannot be "
+                             "named (default: <stem>_relistened.md next to the input)")
     parser.add_argument("--model", default="",
                         help="ASR model id (default: ASR_MODEL from settings, else the shipped one)")
     parser.add_argument("--label", default="Recording",

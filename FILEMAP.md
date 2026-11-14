@@ -829,7 +829,7 @@ Re-listening: segmentation, the timebase, the vocabulary, and what the output de
 - `test_a_backtick_in_the_vocabulary_writes_nothing()` (L515)
 - `test_an_unloadable_model_is_reported_and_writes_nothing()` (L524)
 
-### `tests/unit/test_relisten_file.py` — 388 lines
+### `tests/unit/test_relisten_file.py` — 435 lines
 
 The command that re-listens to a file this application never captured.
 
@@ -854,6 +854,9 @@ The command that re-listens to a file this application never captured.
 - `test_out_that_is_already_a_directory_names_the_file_inside_it()` (L350)
 - `test_out_ending_in_a_slash_is_a_directory_even_when_it_does_not_exist()` (L362)
 - `test_out_file_creates_a_missing_parent_and_does_not_become_a_directory()` (L376)
+- `test_out_naming_an_existing_file_keeps_it_and_writes_a_numbered_one()` (L391)
+- `test_out_naming_a_fresh_file_is_used_unnumbered()` (L407)
+- `test_out_naming_the_input_is_refused_and_the_recording_is_untouched()` (L417)
 
 ### `tests/unit/test_soak_capture_dwell.py` — 90 lines
 
@@ -1246,17 +1249,19 @@ Drive the real application through Start, a fed transcript, and Stop.
 
 - `main()` (L69)
 
-### `tools/relisten_file.py` — 268 lines
+### `tools/relisten_file.py` — 297 lines
 
 Re-listen to any audio or video file, not only a session this application retained.
 
-- `output_path()` (L48)
-- `destination()` (L64)
-- `audio_stream_count()` (L97)
-- `track_labels()` (L114)
-- `convert()` (L135)
-- `parse_args()` (L148)
-- `main()` (L173)
+- `output_path()` (L49)
+- `destination()` (L65)
+- `_same_file()` (L102)
+- `_unused()` (L111)
+- `audio_stream_count()` (L125)
+- `track_labels()` (L142)
+- `convert()` (L163)
+- `parse_args()` (L176)
+- `main()` (L202)
 
 ### `tools/rescore_leakage_micro.py` — 115 lines
 
