@@ -5,6 +5,10 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Changed
+- **The repository is now `aegis-prompter`.** The name is lowercase with hyphens, so it is spelt
+  one way on GitHub, on disk and in the external storage directory (`aegis-prompter-items`).
+  GitHub redirects the old name and ignores case, so existing links and clones keep working;
+  the display name stays Aegis Prompter.
 - **Re-listen folds a recogniser loop and keeps the turn.** A segment that was only `Look at
   Look at…`, `adadad…`, or `ddtrace, and ddtrace…` is replaced by 〔重複已摺疊〕. The same phrase
   repeated inside a real sentence keeps one copy plus that marker. The thresholds follow what
