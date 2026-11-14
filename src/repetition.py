@@ -4,10 +4,20 @@ Whisper sometimes emits the same word or syllable until the segment ends (`Look 
 `adadad…`, `ddtrace, and ddtrace…`). The re-listen pass is what a person reads afterwards, so
 the loop is collapsed here. The live path is left alone (R9).
 
-A run of the same n-gram, three times or more, becomes one copy of that n-gram plus
-〔重複已摺疊〕. A segment that is nothing but the loop is replaced by the marker alone: the
-turn stays, the degenerate text does not. A single Chinese character said three times is
-ordinary agreement (`對對對`) and is kept.
+A run of the same n-gram becomes one copy of that n-gram plus 〔重複已摺疊〕. A segment that
+is nothing but the loop is replaced by the marker alone: the turn stays, the degenerate text
+does not.
+
+The thresholds are set by what people say, because a false fold deletes real words from the
+text a person relies on, while a missed fold only leaves noise to read past:
+
+- one word or character (`no, no, no, no`, `對對對`, `謝謝謝謝`) is a loop at six repeats;
+- a two-character Chinese unit (`好的好的好的`, `對啊對啊對啊`) is treated the same way;
+- a longer phrase (`Look at`, `ddtrace, and`) is a loop at four repeats, so
+  `thank you thank you thank you` stays;
+- a word that tiles a syllable (`adadad…`) is a loop at five repeats of letters, so `www`,
+  `hahaha`, `888` and `121212` stay;
+- a run of digits is never a loop: `1.1.1`, `0.0.0.0` and phone numbers are data.
 """
 import re
 
@@ -23,6 +33,10 @@ _TOKEN = re.compile(
 _MAX_NGRAM = 8
 _MAX_PASSES = 20
 
+_MIN_SHORT_REPEATS = 6      # one token, or a CJK unit of at most two characters
+_MIN_PHRASE_REPEATS = 4     # anything longer
+_MIN_SYLLABLE_REPEATS = 5   # `adadad…` inside one Latin word
+
 
 def _is_cjk(token):
     return len(token) == 1 and bool(_TOKEN.fullmatch(token)) and not token.isascii()
@@ -35,13 +49,13 @@ def _latin_unit(word):
     phrase pass.
     """
     folded = word.lower()
-    if len(folded) < 3:
+    if not folded.isalpha() or len(folded) < _MIN_SYLLABLE_REPEATS:
         return None
-    for size in range(1, len(folded) // 3 + 1):
+    for size in range(1, len(folded) // _MIN_SYLLABLE_REPEATS + 1):
         if len(folded) % size:
             continue
         times = len(folded) // size
-        if times >= 3 and folded[:size] * times == folded:
+        if times >= _MIN_SYLLABLE_REPEATS and folded[:size] * times == folded:
             return word[:size], times
     return None
 
@@ -53,23 +67,27 @@ def _tokens(text):
 def _best_run(tokens):
     """The repeated n-gram covering the most tokens, or None.
 
-    A trailing partial copy counts (`ddtrace, and` three times, then one more `ddtrace`).
-    Three repeats of one Chinese character do not: that is `對對對`, not a loop.
+    A trailing partial copy counts (`ddtrace, and` four times, then one more `ddtrace`).
+    The repeat counts are the module's thresholds; a pattern of digits is never a run.
     """
     keys = [token.lower() for _start, _end, token in tokens]
     count = len(keys)
     best = None
-    max_n = min(_MAX_NGRAM, count // 3)
+    max_n = min(_MAX_NGRAM, count // _MIN_PHRASE_REPEATS)
     for size in range(1, max_n + 1):
-        for start in range(0, count - size * 3 + 1):
+        fewest = _MIN_SHORT_REPEATS if size == 1 else _MIN_PHRASE_REPEATS
+        for start in range(0, count - size * fewest + 1):
             pattern = keys[start:start + size]
+            if all(key.isdigit() for key in pattern):
+                continue
+            short = size == 1 or (size == 2 and all(_is_cjk(tokens[start + k][2])
+                                                    for k in range(size)))
+            need = _MIN_SHORT_REPEATS if short else _MIN_PHRASE_REPEATS
             times = 1
             while start + (times + 1) * size <= count and keys[
                     start + times * size:start + (times + 1) * size] == pattern:
                 times += 1
-            if times < 3:
-                continue
-            if size == 1 and _is_cjk(tokens[start][2]) and times < 4:
+            if times < need:
                 continue
             covered = times * size
             extra = 0

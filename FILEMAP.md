@@ -248,33 +248,33 @@ The post-meeting prompt appended to every session transcript.
 - `list_sessions()` (L291)
 - `read_prompt()` (L328)
 
-### `src/relisten.py` — 547 lines
+### `src/relisten.py` — 548 lines
 
 Re-transcribe a retained meeting from its audio, and fill in what the live path dropped.
 
-- `default_model()` (L70)
-- `relistened_path()` (L82)
-- `read_wav_mono_int16()` (L88)
-- `segment()` (L107)
-- `_join()` (L153)
-- `vocabulary_from()` (L158)
-- `track_starts()` (L191)
-- `normalize_vocabulary()` (L221)
-- `vocabulary_backtick()` (L240)
-- `run()` (L254)
-- `_render()` (L418)
+- `default_model()` (L71)
+- `relistened_path()` (L83)
+- `read_wav_mono_int16()` (L89)
+- `segment()` (L108)
+- `_join()` (L154)
+- `vocabulary_from()` (L159)
+- `track_starts()` (L192)
+- `normalize_vocabulary()` (L222)
+- `vocabulary_backtick()` (L241)
+- `run()` (L255)
+- `_render()` (L419)
 
-### `src/repetition.py` — 140 lines
+### `src/repetition.py` — 158 lines
 
 Fold recogniser loops in a re-listened line, without deleting the turn.
 
-- `_is_cjk()` (L27)
-- `_latin_unit()` (L31)
-- `_tokens()` (L49)
-- `_best_run()` (L53)
-- `_collapse_latin_loops()` (L92)
-- `_collapse_ngrams()` (L115)
-- `collapse_repetition()` (L133)
+- `_is_cjk()` (L41)
+- `_latin_unit()` (L45)
+- `_tokens()` (L63)
+- `_best_run()` (L67)
+- `_collapse_latin_loops()` (L110)
+- `_collapse_ngrams()` (L133)
+- `collapse_repetition()` (L151)
 
 ### `src/system_audio.py` — 226 lines
 
@@ -863,17 +863,20 @@ The command that re-listens to a file this application never captured.
 - `test_a_missing_model_does_not_convert_or_download()` (L283)
 - `test_an_unconfigured_machine_stops_before_offline_or_conversion()` (L298)
 
-### `tests/unit/test_repetition.py` — 67 lines
+### `tests/unit/test_repetition.py` — 112 lines
 
 Loops the recogniser got stuck on, folded after re-listen. The turn is not this module's
 
-- `test_a_repeated_phrase_is_dropped_when_the_segment_is_only_the_loop()` (L14)
-- `test_a_repeated_syllable_is_dropped_when_the_segment_is_only_the_loop()` (L21)
-- `test_a_repeated_name_with_a_connector_is_dropped_when_it_is_the_whole_segment()` (L26)
-- `test_a_loop_inside_a_sentence_keeps_one_copy_and_the_surrounding_words()` (L32)
-- `test_agreement_of_three_characters_stays()` (L38)
-- `test_a_longer_run_of_the_same_character_is_a_loop()` (L45)
-- `test_whisper_decode_options_pass_the_repetition_gates()` (L51)
+- `test_a_repeated_phrase_is_dropped_when_the_segment_is_only_the_loop()` (L16)
+- `test_a_repeated_syllable_is_dropped_when_the_segment_is_only_the_loop()` (L23)
+- `test_a_repeated_name_with_a_connector_is_dropped_when_it_is_the_whole_segment()` (L28)
+- `test_a_loop_inside_a_sentence_keeps_one_copy_and_the_surrounding_words()` (L34)
+- `test_agreement_of_three_characters_stays()` (L40)
+- `test_a_longer_run_of_the_same_character_is_a_loop()` (L47)
+- `test_what_people_say_is_not_folded()` (L73)
+- `test_each_threshold_folds_at_its_boundary_and_not_one_below()` (L84)
+- `test_a_syllable_tiling_folds_at_five_repeats_and_not_four()` (L91)
+- `test_whisper_decode_options_pass_the_repetition_gates()` (L96)
 
 ### `tests/unit/test_soak_capture_dwell.py` — 90 lines
 

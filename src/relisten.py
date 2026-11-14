@@ -29,7 +29,8 @@ What it recovers is specific, and it is exactly what the live path is documented
 A repeated n-gram the recogniser got stuck on is folded after recognition
 (`repetition.collapse_repetition`). The turn is kept. A segment that is only the loop is
 replaced by the marker; a loop inside a real sentence keeps one copy of the phrase plus the
-marker. `對對對` is agreement, not a loop, and is left as said.
+marker. The thresholds (six repeats of a word, four of a phrase, never digits) live in
+`repetition.py`, so `對對對`, `好的好的好的` and `1.1.1` are left as said.
 
 **Speaker separation is optional and installed on demand.** `src/diarize.py` owns it, nothing is
 in `requirements.txt`, and the first re-listen that asks for labels is what fetches it — so a
