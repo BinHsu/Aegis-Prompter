@@ -245,6 +245,11 @@ All notable changes to this project are documented in this file.
   environment.
 
 ### Fixed
+- **`history`, `logs` and `recordings` are ignored when they are symlinks.** In local development
+  they point onto external storage, and the patterns `history/` and `logs/` match only a real
+  directory, so git listed all three as untracked — private transcripts one `git add -A` from a
+  commit. `recordings` was not listed at all. The patterns are now `/history`, `/logs` and
+  `/recordings`: anchored at the root, with no trailing slash.
 - **The hour-long capture soak could report a fully successful run while measuring nothing.**
   `tools/soak_capture.py --microphone` refused the `--mute` flag but never asked whether the machine
   was *already* muted, and a muted run looks healthy from every angle it reports: the system-audio
