@@ -38,8 +38,13 @@ env/
 .pytest_cache/
 
 # Meeting History & Logs
-history/
-logs/
+# No trailing slash: in local dev these are symlinks onto external storage, and a
+# trailing-slash pattern only matches a real directory, not a symlink to one. Without this
+# git lists them as untracked, one `git add -A` away from committing private transcripts.
+# The leading slash keeps them to the repo root.
+/history
+/logs
+/recordings
 
 # context
 context/
