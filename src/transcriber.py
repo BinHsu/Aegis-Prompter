@@ -67,7 +67,13 @@ def resolve_backend(model_path, initial_prompt=None):
             path_or_hf_repo=model_path,
             fp16=True,
             no_speech_threshold=0.6,
+            # Both parameters exist on mlx_whisper.transcribe (read from the installed
+            # package, not assumed). False stops a finished window being fed back in, which
+            # is how a loop locks in. 2.4 is that function's own default for the gzip
+            # compression gate, passed here so it stays if the library default moves.
+            # A loop that is still emitted is folded afterwards by relisten, not by this.
             condition_on_previous_text=False,
+            compression_ratio_threshold=2.4,
             initial_prompt=initial_prompt,
         )
         return (result.get("text") or "").strip()

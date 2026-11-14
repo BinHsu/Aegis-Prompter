@@ -26,6 +26,11 @@ What it recovers is specific, and it is exactly what the live path is documented
   the terms. Either source is printed in the output, because a reader who meets one of those
   words has to be able to see that it was suggested (**V74**).
 
+A repeated n-gram the recogniser got stuck on is folded after recognition
+(`repetition.collapse_repetition`). The turn is kept. A segment that is only the loop is
+replaced by the marker; a loop inside a real sentence keeps one copy of the phrase plus the
+marker. `對對對` is agreement, not a loop, and is left as said.
+
 **Speaker separation is optional and installed on demand.** `src/diarize.py` owns it, nothing is
 in `requirements.txt`, and the first re-listen that asks for labels is what fetches it — so a
 process that never asks contains no telemetry exporter and no cloud SDK, and **R15** stays
@@ -275,7 +280,7 @@ def run(transcript_path, tracks, model_path=None, use_context=True, on_progress=
     result = {"output": "", "error": "", "segments": 0, "tracks": {}, "aligned": False,
               "diarized": False, "voices": 0, "diarize_error": "", "external": external,
               "vocabulary": "", "vocabulary_source": "", "same_container": bool(same_container),
-              "track_order": list(track_order) if track_order else None}
+              "track_order": list(track_order) if track_order else None, "folded": 0}
     if not tracks:
         result["error"] = "no retained audio for this session"
         return result
@@ -374,6 +379,11 @@ def run(transcript_path, tracks, model_path=None, use_context=True, on_progress=
                 result["error"] = f"{label} segment {index} failed: {type(exc).__name__}: {exc}"
                 break
             if text:
+                import repetition
+                folded = repetition.collapse_repetition(text)
+                if folded != text:
+                    result["folded"] += 1
+                    text = folded
                 line_label = label
                 if turns:
                     import diarize as diarizer
@@ -440,6 +450,9 @@ def _render(transcript_path, tracks, lines, result, context, model, kind, source
                    f"below was suggested as well as heard")
     else:
         out.append("- **Vocabulary bias**: off")
+    if result.get("folded"):
+        out.append(f"- **Repetition**: {result['folded']} segment(s) contained a loop. "
+                   f"The repeated run was folded and the turn was kept, marked `〔重複已摺疊〕`.")
     if external and result.get("same_container"):
         order = result.get("track_order") or list(tracks)
         named = ", ".join(f"`{label}`" for label in order)

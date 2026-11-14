@@ -5,6 +5,11 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Changed
+- **Re-listen folds a recogniser loop and keeps the turn.** A segment that was only `Look at
+  Look at…`, `adadad…`, or `ddtrace, and ddtrace…` is replaced by 〔重複已摺疊〕. The same phrase
+  repeated inside a real sentence keeps one copy plus that marker. `對對對` is left as said.
+  The line is not deleted. Whisper is already called with `condition_on_previous_text=False`;
+  `compression_ratio_threshold=2.4` is now passed explicitly, which is mlx-whisper's own default.
 - **The post-meeting prompt keeps every turn, and names the script for all three parts.** It used
   to say both "recogniser artefacts dropped" and "same turns", and a run on a real recording
   deleted turns to satisfy the first. It now says to keep every turn and to replace non-speech or
