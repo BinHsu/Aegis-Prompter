@@ -13,7 +13,7 @@ rather than trusting this file:
 python tools/gen_filemap.py
 ```
 
-**81 Python files.**
+**83 Python files.**
 
 ## `fixtures/asr/results/20260817-model-swap/`
 
@@ -248,21 +248,33 @@ The post-meeting prompt appended to every session transcript.
 - `list_sessions()` (L291)
 - `read_prompt()` (L328)
 
-### `src/relisten.py` — 534 lines
+### `src/relisten.py` — 548 lines
 
 Re-transcribe a retained meeting from its audio, and fill in what the live path dropped.
 
-- `default_model()` (L65)
-- `relistened_path()` (L77)
-- `read_wav_mono_int16()` (L83)
-- `segment()` (L102)
-- `_join()` (L148)
-- `vocabulary_from()` (L153)
-- `track_starts()` (L186)
-- `normalize_vocabulary()` (L216)
-- `vocabulary_backtick()` (L235)
-- `run()` (L249)
-- `_render()` (L408)
+- `default_model()` (L71)
+- `relistened_path()` (L83)
+- `read_wav_mono_int16()` (L89)
+- `segment()` (L108)
+- `_join()` (L154)
+- `vocabulary_from()` (L159)
+- `track_starts()` (L192)
+- `normalize_vocabulary()` (L222)
+- `vocabulary_backtick()` (L241)
+- `run()` (L255)
+- `_render()` (L419)
+
+### `src/repetition.py` — 158 lines
+
+Fold recogniser loops in a re-listened line, without deleting the turn.
+
+- `_is_cjk()` (L41)
+- `_latin_unit()` (L45)
+- `_tokens()` (L63)
+- `_best_run()` (L67)
+- `_collapse_latin_loops()` (L110)
+- `_collapse_ngrams()` (L133)
+- `collapse_repetition()` (L151)
 
 ### `src/system_audio.py` — 226 lines
 
@@ -285,11 +297,11 @@ Pure text filters applied to ASR output before it reaches the dialogue buffer.
 - `normalize_phrase()` (L63)
 - `is_acceptable()` (L72)
 
-### `src/transcriber.py` — 565 lines
+### `src/transcriber.py` — 571 lines
 
 - `resolve_backend()` (L21)
-- `release_models()` (L78)
-- `class Transcriber` (L134)
+- `release_models()` (L84)
+- `class Transcriber` (L140)
   - `find_device_index()`
   - `warm_model()`
   - `_audio_callback()`
@@ -785,7 +797,7 @@ Arming an advisor slot is a per-meeting choice — disarming it must actually st
 - `test_the_prompt_names_the_retained_audio_when_there_is_some()` (L254)
 - `test_the_prompt_says_so_when_nothing_was_kept()` (L268)
 
-### `tests/unit/test_relisten.py` — 537 lines
+### `tests/unit/test_relisten.py` — 562 lines
 
 Re-listening: segmentation, the timebase, the vocabulary, and what the output declares.
 
@@ -826,8 +838,9 @@ Re-listening: segmentation, the timebase, the vocabulary, and what the output de
 - `test_an_external_recording_without_an_output_path_is_refused()` (L467)
 - `test_a_diarized_external_file_does_not_tell_the_agent_separation_never_happened()` (L473)
 - `test_streams_of_one_file_share_a_timebase_and_keep_stream_order()` (L491)
-- `test_a_backtick_in_the_vocabulary_writes_nothing()` (L515)
-- `test_an_unloadable_model_is_reported_and_writes_nothing()` (L524)
+- `test_a_loop_is_folded_and_the_turn_is_kept()` (L515)
+- `test_a_backtick_in_the_vocabulary_writes_nothing()` (L540)
+- `test_an_unloadable_model_is_reported_and_writes_nothing()` (L549)
 
 ### `tests/unit/test_relisten_file.py` — 435 lines
 
@@ -857,6 +870,21 @@ The command that re-listens to a file this application never captured.
 - `test_out_naming_an_existing_file_keeps_it_and_writes_a_numbered_one()` (L391)
 - `test_out_naming_a_fresh_file_is_used_unnumbered()` (L407)
 - `test_out_naming_the_input_is_refused_and_the_recording_is_untouched()` (L417)
+
+### `tests/unit/test_repetition.py` — 112 lines
+
+Loops the recogniser got stuck on, folded after re-listen. The turn is not this module's
+
+- `test_a_repeated_phrase_is_dropped_when_the_segment_is_only_the_loop()` (L16)
+- `test_a_repeated_syllable_is_dropped_when_the_segment_is_only_the_loop()` (L23)
+- `test_a_repeated_name_with_a_connector_is_dropped_when_it_is_the_whole_segment()` (L28)
+- `test_a_loop_inside_a_sentence_keeps_one_copy_and_the_surrounding_words()` (L34)
+- `test_agreement_of_three_characters_stays()` (L40)
+- `test_a_longer_run_of_the_same_character_is_a_loop()` (L47)
+- `test_what_people_say_is_not_folded()` (L73)
+- `test_each_threshold_folds_at_its_boundary_and_not_one_below()` (L84)
+- `test_a_syllable_tiling_folds_at_five_repeats_and_not_four()` (L91)
+- `test_whisper_decode_options_pass_the_repetition_gates()` (L96)
 
 ### `tests/unit/test_soak_capture_dwell.py` — 90 lines
 

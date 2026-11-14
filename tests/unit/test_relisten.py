@@ -512,6 +512,31 @@ def test_streams_of_one_file_share_a_timebase_and_keep_stream_order(tmp_path, st
     assert body.index("B side**:") < body.index("A side**:")
 
 
+def test_a_loop_is_folded_and_the_turn_is_kept(tmp_path, stub_asr, monkeypatch):
+    """The segment stays a line. Only the stuck text is replaced."""
+    import transcriber as tr
+
+    def resolve_backend(model_path, initial_prompt=None):
+        return "stub", lambda audio: "Look at Look at Look at Look at"
+
+    monkeypatch.setattr(tr, "resolve_backend", resolve_backend)
+    transcript = tmp_path / "Meeting_S1.md"
+    transcript.write_text("placeholder", encoding="utf-8")
+    mic = _write(tmp_path / "Meeting_S1_mic.wav", _tone(1.0))
+
+    result = relisten.run(str(transcript), {"Speaker (You)": mic})
+    written = open(result["output"], encoding="utf-8").read()
+    body = written.split("## 📝 Transcript", 1)[1]
+
+    assert result["error"] == ""
+    assert result["segments"] == 1
+    assert result["folded"] == 1
+    assert "Look at Look at" not in body
+    assert "〔重複已摺疊〕" in body
+    assert "**[" in body
+    assert "Repetition**: 1 segment" in written
+
+
 def test_a_backtick_in_the_vocabulary_writes_nothing(tmp_path):
     out = tmp_path / "call_relistened.md"
     result = relisten.run(None, {"Recording": str(tmp_path / "nope.wav")},
