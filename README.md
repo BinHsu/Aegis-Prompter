@@ -81,7 +81,7 @@ graph TD
 ## 📁 File Structure
 
 ```text
-Aegis-Prompter/
+aegis-prompter/
 ├── src/
 │   ├── app.py             # Multi-role UI & State Routing (Access → Role → Configure → Pre-flight → Running)
 │   ├── bootstrap.py       # Settings, path derivation, readiness. Stdlib only, imported first
@@ -113,8 +113,8 @@ Aegis-Prompter/
 
 1. **Clone & Setup Environment**:
    ```zsh
-   git clone https://github.com/BinHsu/Aegis-Prompter.git
-   cd Aegis-Prompter
+   git clone https://github.com/BinHsu/aegis-prompter.git
+   cd aegis-prompter
    ```
    **For Mac Users (Recommended)**: We provide an automated, idempotent setup script that installs Homebrew dependencies, configuring `portaudio` and the `BlackHole` virtual driver safely.
    ```zsh
